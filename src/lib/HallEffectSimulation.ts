@@ -15,23 +15,39 @@ export class HallEffectSimulation {
   private magneticField: number;
   private isRunning: boolean;
   private readonly ELECTRON_COUNT = 50;
-  private readonly MOVEMENT_SPEED = 0.5;
-  private readonly MAGNETIC_FORCE_FACTOR = 0.001;
-  private readonly RANDOM_MOVEMENT_FACTOR = 0.0005;
+  private readonly BASE_VELOCITY = 0.5; // Базовая скорость электронов
+  private readonly ELECTRON_CHARGE = -1; // Отрицательный заряд электрона
+  private readonly HALL_EFFECT_FACTOR = 0.1; // Значительно увеличен для видимого эффекта
+  private readonly RANDOM_MOVEMENT_FACTOR = 0.0001; // Сильно уменьшен
   private readonly RESET_POSITION_X = 2.5;
+  private lastForce = new THREE.Vector3(); // Для отладки
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.current = 7;
     this.magneticField = 49.33;
     this.isRunning = true;
-    console.log("HallEffectSimulation создан");
+    console.log("HallEffectSimulation создан с током", this.current, "и магнитным полем", this.magneticField);
+  }
+
+  private calculateLorentzForce(velocity: THREE.Vector3, magneticField: number): THREE.Vector3 {
+    // Магнитное поле направлено вниз по Y
+    const B = new THREE.Vector3(0, -1, 0).multiplyScalar(magneticField);
+    
+    // Вычисляем силу Лоренца F = q[v×B]
+    const force = new THREE.Vector3();
+    force.crossVectors(velocity, B);
+    
+    // Сохраняем силу для отладки
+    this.lastForce.copy(force);
+    
+    // Применяем масштабирование
+    return force.multiplyScalar(this.HALL_EFFECT_FACTOR);
   }
 
   public initializeElectrons(count: number = this.ELECTRON_COUNT): void {
     console.log("Инициализация электронов");
     
-    // Очищаем предыдущие электроны
     this.dispose();
     
     const electronGeometry = new THREE.SphereGeometry(0.06, 16, 16);
@@ -49,16 +65,18 @@ export class HallEffectSimulation {
       const position = new THREE.Vector3(
         Math.random() * 4 - 2,  // от -2 до 2
         Math.random() * 0.2 - 0.1,  // от -0.1 до 0.1
-        Math.random() * 0.8 - 0.4   // от -0.4 до 0.4
+        0  // Начинаем с Z = 0 для лучшей видимости эффекта
       );
       mesh.position.copy(position);
       mesh.castShadow = true;
       mesh.userData.id = i;
       this.scene.add(mesh);
 
+      const velocity = new THREE.Vector3(-this.BASE_VELOCITY, 0, 0);
+
       return {
         position,
-        velocity: new THREE.Vector3(this.MOVEMENT_SPEED, 0, 0),
+        velocity,
         id: i,
         mesh,
         initialPosition: position.clone()
@@ -71,33 +89,49 @@ export class HallEffectSimulation {
   public update(deltaTime: number): void {
     if (!this.isRunning) return;
     
+    const dt = Math.min(deltaTime, 0.1);
+    
     this.electrons.forEach(electron => {
-      // Движение под действием тока (вдоль оси X)
-      const currentForce = this.current * this.MOVEMENT_SPEED * deltaTime;
-      electron.position.x += currentForce;
+      // Обновляем скорость (против тока)
+      electron.velocity.x = -this.BASE_VELOCITY * this.current;
       
-      // Эффект Холла (отклонение вдоль оси Y)
-      const hallForce = this.current * this.magneticField * this.MAGNETIC_FORCE_FACTOR * deltaTime;
-      electron.position.y += hallForce;
+      // Вычисляем силу Лоренца
+      const lorentzForce = this.calculateLorentzForce(electron.velocity, this.magneticField);
       
-      // Случайные флуктуации
+      // Движение вдоль X (ток)
+      electron.position.x += electron.velocity.x * dt;
+      
+      // Движение вдоль Z (эффект Холла)
+      // Увеличиваем эффект для лучшей видимости
+      electron.position.z += lorentzForce.z * dt * Math.abs(this.magneticField);
+      
+      // Минимальные случайные флуктуации
       electron.position.y += (Math.random() - 0.5) * this.RANDOM_MOVEMENT_FACTOR;
-      electron.position.z += (Math.random() - 0.5) * this.RANDOM_MOVEMENT_FACTOR;
       
-      // Сброс позиции при достижении края
-      if (electron.position.x > this.RESET_POSITION_X) {
-        electron.position.x = -this.RESET_POSITION_X;
+      // Сброс позиции
+      if (electron.position.x < -this.RESET_POSITION_X) {
+        electron.position.x = this.RESET_POSITION_X;
         electron.position.y = Math.random() * 0.2 - 0.1;
-        electron.position.z = Math.random() * 0.8 - 0.4;
+        electron.position.z = 0; // Сбрасываем в центр по Z
       }
       
-      // Ограничение движения
+      // Ограничения
       electron.position.y = THREE.MathUtils.clamp(electron.position.y, -0.2, 0.2);
       electron.position.z = THREE.MathUtils.clamp(electron.position.z, -0.4, 0.4);
       
-      // Обновление позиции меша
       electron.mesh.position.copy(electron.position);
     });
+
+    // Отладочная информация
+    if (this.electrons.length > 0) {
+      const firstElectron = this.electrons[0];
+      console.log(
+        `Диагностика: ток=${this.current}, поле=${this.magneticField}, ` +
+        `скорость=(${firstElectron.velocity.x.toFixed(3)}, ${firstElectron.velocity.y.toFixed(3)}, ${firstElectron.velocity.z.toFixed(3)}), ` +
+        `сила=(${this.lastForce.x.toFixed(3)}, ${this.lastForce.y.toFixed(3)}, ${this.lastForce.z.toFixed(3)}), ` +
+        `позиция Z=${firstElectron.position.z.toFixed(3)}`
+      );
+    }
   }
 
   public setCurrent(value: number): void {
