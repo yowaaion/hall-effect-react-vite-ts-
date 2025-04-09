@@ -2,23 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { Slider } from './ui/slider';
 import { Card } from './ui/card';
-
-interface Electron {
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  id: number;
-  mesh: THREE.Mesh;
-}
+import { HallEffectSimulation } from '../lib/HallEffectSimulation';
 
 export const HallEffect3D = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const electronsRef = useRef<Electron[]>([]);
+  const simulationRef = useRef<HallEffectSimulation | null>(null);
   const animationFrameRef = useRef<number>(0);
   const arrowsRef = useRef<THREE.ArrowHelper[]>([]);
   const lastTimeRef = useRef<number>(0);
+  const cameraTargetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const cameraPositionRef = useRef<THREE.Vector3>(new THREE.Vector3(3, 2, 4));
 
   const [current, setCurrent] = useState<number>(7);
   const [magneticField, setMagneticField] = useState<number>(49.33);
@@ -37,8 +33,8 @@ export const HallEffect3D = () => {
       0.1,
       1000
     );
-    camera.position.set(3, 2, 4);
-    camera.lookAt(0, 0, 0);
+    camera.position.copy(cameraPositionRef.current);
+    camera.lookAt(cameraTargetRef.current);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ 
@@ -47,6 +43,8 @@ export const HallEffect3D = () => {
     });
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -55,6 +53,7 @@ export const HallEffect3D = () => {
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 5, 5);
+    directionalLight.castShadow = true;
     scene.add(directionalLight);
 
     const semiconductorGeometry = new THREE.BoxGeometry(4, 0.5, 1);
@@ -67,6 +66,7 @@ export const HallEffect3D = () => {
       clearcoat: 0.4,
     });
     const semiconductor = new THREE.Mesh(semiconductorGeometry, semiconductorMaterial);
+    semiconductor.receiveShadow = true;
     scene.add(semiconductor);
 
     const arrowHelpers: THREE.ArrowHelper[] = [];
@@ -96,87 +96,41 @@ export const HallEffect3D = () => {
     );
     scene.add(currentArrow);
 
-    const electronGeometry = new THREE.SphereGeometry(0.06, 16, 16);
-    const electronMaterial = new THREE.MeshPhysicalMaterial({ 
-      color: 0x3b82f6,
-      emissive: 0x60a5fa,
-      emissiveIntensity: 0.5,
-      metalness: 0.5,
-      roughness: 0.2,
-      clearcoat: 1,
-    });
-
-    // Create electrons with their meshes
-    electronsRef.current = Array.from({ length: 30 }, (_, i) => {
-      const mesh = new THREE.Mesh(electronGeometry, electronMaterial);
-      const position = new THREE.Vector3(
-        Math.random() * 4 - 2,
-        Math.random() * 0.2 - 0.1,
-        Math.random() * 0.8 - 0.4
-      );
-      mesh.position.copy(position);
-      mesh.userData.id = i;
-      scene.add(mesh);
-
-      return {
-        position,
-        velocity: new THREE.Vector3(Math.random() * 0.02 + 0.03, 0, 0),
-        id: i,
-        mesh
-      };
-    });
-
     const gridHelper = new THREE.GridHelper(10, 20, 0xcccccc, 0xe5e5e5);
     gridHelper.position.y = -0.25;
     scene.add(gridHelper);
 
+    // Initialize simulation
+    const simulation = new HallEffectSimulation(scene);
+    simulation.initializeElectrons();
+    simulationRef.current = simulation;
+
     const animate = (currentTime: number) => {
-      if (!isRunning || !scene || !camera || !renderer) return;
+      if (!isRunning || !scene || !camera || !renderer || !simulationRef.current) return;
 
       const deltaTime = (currentTime - lastTimeRef.current) * 0.001;
       lastTimeRef.current = currentTime;
 
-      // Update all electrons in a single loop
-      electronsRef.current.forEach(electron => {
-        // Update position based on current and velocity
-        electron.position.x += current * 0.004 * electron.velocity.x * deltaTime;
-        
-        // Apply Hall effect
-        const magneticForce = magneticField * current * 0.00004 * deltaTime;
-        electron.position.y += magneticForce;
+      // Update simulation
+      simulationRef.current.update(deltaTime);
 
-        // Add subtle random movement
-        electron.position.y += (Math.random() - 0.5) * 0.0005;
-        electron.position.z += (Math.random() - 0.5) * 0.0005;
-
-        // Reset position with improved bounds checking
-        if (electron.position.x > 2) {
-          electron.position.x = -2;
-          electron.position.y = Math.random() * 0.2 - 0.1;
-          electron.position.z = Math.random() * 0.8 - 0.4;
-        }
-        
-        if (Math.abs(electron.position.y) > 0.2) {
-          electron.position.y = Math.sign(electron.position.y) * 0.2;
-        }
-        
-        if (Math.abs(electron.position.z) > 0.4) {
-          electron.position.z = Math.sign(electron.position.z) * 0.4;
-        }
-
-        // Update mesh position directly
-        electron.mesh.position.copy(electron.position);
-      });
-
-      // Smooth camera rotation
+      // Плавное вращение камеры
       const time = currentTime * 0.0001;
-      camera.position.x = 3 * Math.cos(time);
-      camera.position.z = 4 * Math.sin(time);
-      camera.lookAt(0, 0, 0);
+      const radius = 4;
+      const height = 2;
+      const targetX = radius * Math.cos(time);
+      const targetZ = radius * Math.sin(time);
+      
+      // Плавное перемещение камеры
+      cameraPositionRef.current.x += (targetX - cameraPositionRef.current.x) * 0.02;
+      cameraPositionRef.current.z += (targetZ - cameraPositionRef.current.z) * 0.02;
+      camera.position.copy(cameraPositionRef.current);
+      camera.lookAt(cameraTargetRef.current);
 
-      // Update magnetic field arrows
+      // Плавное обновление стрелок магнитного поля
       arrowsRef.current.forEach(arrow => {
-        arrow.scale.y = magneticField / 50;
+        const targetScale = magneticField / 50;
+        arrow.scale.y += (targetScale - arrow.scale.y) * 0.1;
       });
 
       renderer.render(scene, camera);
@@ -208,26 +162,22 @@ export const HallEffect3D = () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      if (simulationRef.current) {
+        simulationRef.current.dispose();
+      }
       // Dispose of geometries and materials
-      electronGeometry.dispose();
-      electronMaterial.dispose();
       semiconductorGeometry.dispose();
       semiconductorMaterial.dispose();
     };
   }, []);
 
-  // Update animation when parameters change
+  // Update simulation parameters when they change
   useEffect(() => {
-    if (!sceneRef.current || !isRunning) return;
+    if (!simulationRef.current) return;
     
-    // Update magnetic field arrow
-    const magneticArrow = sceneRef.current.children.find(
-      child => child instanceof THREE.ArrowHelper && child.position.y > 0
-    ) as THREE.ArrowHelper | undefined;
-    
-    if (magneticArrow) {
-      magneticArrow.scale.y = magneticField / 50;
-    }
+    simulationRef.current.setCurrent(current);
+    simulationRef.current.setMagneticField(magneticField);
+    simulationRef.current.setIsRunning(isRunning);
   }, [current, magneticField, isRunning]);
 
   return (
@@ -237,7 +187,7 @@ export const HallEffect3D = () => {
         <div className="lg:col-span-2">
           <Card className="p-6 bg-white shadow-lg">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-gray-800">Hall Effect Visualization</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Визуализация эффекта Холла</h2>
               <button
                 onClick={() => setIsRunning(prev => !prev)}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 
@@ -248,112 +198,89 @@ export const HallEffect3D = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
-                    Pause
+                    Пауза
                   </>
                 ) : (
                   <>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                     </svg>
-                    Resume
+                    Старт
                   </>
                 )}
               </button>
             </div>
-            <div 
-              ref={containerRef} 
-              className="w-full h-[600px] rounded-lg overflow-hidden"
-            />
-            <div className="mt-4 text-sm text-gray-600">
-              <p className="font-medium mb-2">Legend:</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                  <span>Electrons</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 flex items-center justify-center text-red-600">→</div>
-                  <span>Current Direction</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 flex items-center justify-center text-blue-800">⊗</div>
-                  <span>Magnetic Field (into screen)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-200 rounded"></div>
-                  <span>Semiconductor</span>
-                </div>
-              </div>
-            </div>
+            <div ref={containerRef} className="w-full h-[500px] rounded-lg overflow-hidden" />
           </Card>
         </div>
 
         {/* Controls card */}
         <div className="lg:col-span-1">
           <Card className="p-6 bg-white shadow-lg">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Parameters</h3>
+            <h3 className="text-xl font-semibold text-gray-800 mb-6">Управление симуляцией</h3>
             
             <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2 text-gray-700">
-                    Current Intensity
-                  </label>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-2xl font-bold text-blue-600">{current} mA</span>
-                    <span className="text-sm text-gray-500">Range: 1-15 mA</span>
-                  </div>
-                  <Slider
-                    value={[current]}
-                    onValueChange={(values: number[]) => setCurrent(values[0])}
-                    min={1}
-                    max={15}
-                    step={0.1}
-                    className="my-4"
-                  />
-                  <p className="text-sm text-gray-600">
-                    Controls electron flow through the semiconductor
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700">
-                    Magnetic Field Strength
-                  </label>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-2xl font-bold text-blue-600">{magneticField} × 10³ A/m</span>
-                    <span className="text-sm text-gray-500">Range: 10-100 × 10³ A/m</span>
-                  </div>
-                  <Slider
-                    value={[magneticField]}
-                    onValueChange={(values: number[]) => setMagneticField(values[0])}
-                    min={10}
-                    max={100}
-                    step={0.1}
-                    className="my-4"
-                  />
-                  <p className="text-sm text-gray-600">
-                    Controls electron deflection strength
-                  </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Сила тока (А)
+                </label>
+                <Slider
+                  value={[current]}
+                  onValueChange={(values) => setCurrent(values[0])}
+                  min={0}
+                  max={14}
+                  step={0.1}
+                />
+                <div className="mt-1 text-sm text-gray-500">
+                  {current.toFixed(1)} А
                 </div>
               </div>
 
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h4 className="font-medium text-gray-800 mb-2">About Hall Effect</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  The Hall effect is the production of a voltage difference across a conductor when 
-                  a magnetic field is applied perpendicular to the current flow. This visualization 
-                  demonstrates how electrons (blue spheres) are deflected by the magnetic field, 
-                  creating a measurable potential difference.
-                </p>
-                <div className="text-sm text-gray-600">
-                  <p className="font-medium mb-1">Key Components:</p>
-                  <ul className="list-disc list-inside space-y-1 text-gray-500">
-                    <li>Semiconductor material (gray block)</li>
-                    <li>Electric current (red arrow)</li>
-                    <li>Magnetic field (blue dots)</li>
-                    <li>Moving electrons (blue spheres)</li>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Магнитное поле (мТл)
+                </label>
+                <Slider
+                  value={[magneticField]}
+                  onValueChange={(values) => setMagneticField(values[0])}
+                  min={0}
+                  max={100}
+                  step={0.1}
+                />
+                <div className="mt-1 text-sm text-gray-500">
+                  {magneticField.toFixed(2)} мТл
+                </div>
+              </div>
+
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <h4 className="text-lg font-semibold text-blue-800 mb-3">Об эффекте Холла</h4>
+                <div className="space-y-3 text-sm text-blue-700">
+                  <p>
+                    Эффект Холла — это явление возникновения поперечной разности потенциалов в проводнике с током, помещённом в магнитное поле, перпендикулярное направлению тока.
+                  </p>
+                  <p>
+                    В данной симуляции вы можете наблюдать:
+                  </p>
+                  <ul className="list-disc list-inside space-y-2 ml-2">
+                    <li>Движение электронов (синие сферы) под действием тока</li>
+                    <li>Отклонение электронов магнитным полем (синие стрелки)</li>
+                    <li>Образование поперечного электрического поля</li>
                   </ul>
+                  <p className="text-xs text-blue-600 mt-4">
+                    Формула: VH = B·I·d / (n·e), где:
+                    <br />
+                    VH — напряжение Холла
+                    <br />
+                    B — магнитная индукция
+                    <br />
+                    I — сила тока
+                    <br />
+                    d — толщина проводника
+                    <br />
+                    n — концентрация носителей заряда
+                    <br />
+                    e — элементарный заряд
+                  </p>
                 </div>
               </div>
             </div>
