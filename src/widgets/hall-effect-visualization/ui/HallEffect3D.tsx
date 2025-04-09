@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { Slider } from '@/shared/ui/slider';
-import { Card } from '@/shared/ui/card';
-import { HallEffectSimulation } from '@/features/hall-effect/model/HallEffectSimulation';
+import { Slider } from '../../../shared/ui/slider';
+import { Card } from '../../../shared/ui/card';
+import { HallEffectSimulation } from '../../../features/hall-effect/model/HallEffectSimulation';
 
 export const HallEffect3D = () => {
   const containerRef = useRef<HTMLDivElement>(null);
