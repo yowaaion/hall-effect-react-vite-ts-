@@ -13,31 +13,36 @@ export const HallEffect3D = () => {
   const animationFrameRef = useRef<number>(0);
   const arrowsRef = useRef<THREE.ArrowHelper[]>([]);
   const lastTimeRef = useRef<number>(0);
-  const cameraTargetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
-  const cameraPositionRef = useRef<THREE.Vector3>(new THREE.Vector3(3, 2, 4));
+  const isInitializedRef = useRef<boolean>(false);
 
   const [current, setCurrent] = useState<number>(7);
   const [magneticField, setMagneticField] = useState<number>(49.33);
   const [isRunning, setIsRunning] = useState(true);
 
+  // Инициализация сцены
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || isInitializedRef.current) return;
 
+    console.log("Начало инициализации сцены");
+
+    // Создаем сцену
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf8fafc);
     sceneRef.current = scene;
 
+    // Создаем камеру
     const camera = new THREE.PerspectiveCamera(
       60,
       containerRef.current.clientWidth / containerRef.current.clientHeight,
       0.1,
       1000
     );
-    camera.position.copy(cameraPositionRef.current);
-    camera.lookAt(cameraTargetRef.current);
+    camera.position.set(3, 2, 4);
+    camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ 
+    // Создаем рендерер
+    const renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: "high-performance"
     });
@@ -48,6 +53,7 @@ export const HallEffect3D = () => {
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
+    // Добавляем освещение
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
 
@@ -56,8 +62,9 @@ export const HallEffect3D = () => {
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
+    // Создаем полупроводник
     const semiconductorGeometry = new THREE.BoxGeometry(4, 0.5, 1);
-    const semiconductorMaterial = new THREE.MeshPhysicalMaterial({ 
+    const semiconductorMaterial = new THREE.MeshPhysicalMaterial({
       color: 0xe2e8f0,
       transparent: true,
       opacity: 0.9,
@@ -69,6 +76,7 @@ export const HallEffect3D = () => {
     semiconductor.receiveShadow = true;
     scene.add(semiconductor);
 
+    // Добавляем стрелки магнитного поля
     const arrowHelpers: THREE.ArrowHelper[] = [];
     for (let x = -1.5; x <= 1.5; x += 0.75) {
       for (let z = -0.4; z <= 0.4; z += 0.4) {
@@ -86,6 +94,7 @@ export const HallEffect3D = () => {
     }
     arrowsRef.current = arrowHelpers;
 
+    // Добавляем стрелку тока
     const currentArrow = new THREE.ArrowHelper(
       new THREE.Vector3(1, 0, 0),
       new THREE.Vector3(-2.5, 0, 0),
@@ -96,66 +105,29 @@ export const HallEffect3D = () => {
     );
     scene.add(currentArrow);
 
+    // Добавляем сетку
     const gridHelper = new THREE.GridHelper(10, 20, 0xcccccc, 0xe5e5e5);
     gridHelper.position.y = -0.25;
     scene.add(gridHelper);
 
-    // Initialize simulation
+    // Инициализируем симуляцию
     const simulation = new HallEffectSimulation(scene);
     simulation.initializeElectrons();
     simulationRef.current = simulation;
 
-    const animate = (currentTime: number) => {
-      if (!isRunning || !scene || !camera || !renderer || !simulationRef.current) return;
+    // Устанавливаем начальные значения
+    simulation.setCurrent(current);
+    simulation.setMagneticField(magneticField);
+    simulation.setIsRunning(isRunning);
 
-      const deltaTime = (currentTime - lastTimeRef.current) * 0.001;
-      lastTimeRef.current = currentTime;
-
-      // Update simulation
-      simulationRef.current.update(deltaTime);
-
-      // Плавное вращение камеры
-      const time = currentTime * 0.0001;
-      const radius = 4;
-      const height = 2;
-      const targetX = radius * Math.cos(time);
-      const targetZ = radius * Math.sin(time);
-      
-      // Плавное перемещение камеры
-      cameraPositionRef.current.x += (targetX - cameraPositionRef.current.x) * 0.02;
-      cameraPositionRef.current.z += (targetZ - cameraPositionRef.current.z) * 0.02;
-      camera.position.copy(cameraPositionRef.current);
-      camera.lookAt(cameraTargetRef.current);
-
-      // Плавное обновление стрелок магнитного поля
-      arrowsRef.current.forEach(arrow => {
-        const targetScale = magneticField / 50;
-        arrow.scale.y += (targetScale - arrow.scale.y) * 0.1;
-      });
-
-      renderer.render(scene, camera);
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
-
+    isInitializedRef.current = true;
     lastTimeRef.current = performance.now();
-    animate(lastTimeRef.current);
 
-    const handleResize = () => {
-      if (!containerRef.current || !camera || !renderer) return;
-      
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
-      
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      
-      renderer.setSize(width, height);
-    };
+    console.log("Сцена инициализирована успешно");
 
-    window.addEventListener('resize', handleResize);
-
+    // Очистка при размонтировании
     return () => {
-      window.removeEventListener('resize', handleResize);
+      console.log("Очистка сцены");
       if (rendererRef.current && containerRef.current) {
         containerRef.current.removeChild(rendererRef.current.domElement);
       }
@@ -165,15 +137,86 @@ export const HallEffect3D = () => {
       if (simulationRef.current) {
         simulationRef.current.dispose();
       }
-      // Dispose of geometries and materials
       semiconductorGeometry.dispose();
       semiconductorMaterial.dispose();
+      isInitializedRef.current = false;
+    };
+  }, []);
+
+  // Анимация
+  useEffect(() => {
+    if (!isInitializedRef.current || !sceneRef.current || !cameraRef.current || !rendererRef.current) {
+      return;
+    }
+
+    console.log("Запуск анимации");
+
+    const animate = (currentTime: number) => {
+      if (!sceneRef.current || !cameraRef.current || !rendererRef.current || !simulationRef.current) {
+        return;
+      }
+
+      const deltaTime = Math.min((currentTime - lastTimeRef.current) * 0.001, 0.1);
+      lastTimeRef.current = currentTime;
+
+      // Обновляем симуляцию
+      simulationRef.current.update(deltaTime);
+
+      // Вращаем камеру
+      const radius = 5;
+      const speed = 0.2;
+      cameraRef.current.position.x = radius * Math.cos(currentTime * 0.0002 * speed);
+      cameraRef.current.position.z = radius * Math.sin(currentTime * 0.0002 * speed);
+      cameraRef.current.lookAt(0, 0, 0);
+
+      // Обновляем стрелки магнитного поля
+      arrowsRef.current.forEach(arrow => {
+        arrow.scale.setY(magneticField / 50);
+      });
+
+      // Рендерим сцену
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    lastTimeRef.current = performance.now();
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [magneticField]);
+
+  // Обработка изменения размера окна
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+    
+    const handleResize = () => {
+      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
+      
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+      
+      cameraRef.current.aspect = width / height;
+      cameraRef.current.updateProjectionMatrix();
+      
+      rendererRef.current.setSize(width, height);
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
   // Update simulation parameters when they change
   useEffect(() => {
     if (!simulationRef.current) return;
+    
+    console.log("Обновление параметров симуляции:", { current, magneticField, isRunning });
     
     simulationRef.current.setCurrent(current);
     simulationRef.current.setMagneticField(magneticField);
