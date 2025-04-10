@@ -15,10 +15,10 @@ export class HallEffectSimulation {
   private magneticField: number;
   private isRunning: boolean;
   private readonly ELECTRON_COUNT = 50;
-  private readonly BASE_VELOCITY = 0.5; // Базовая скорость электронов
+  private readonly BASE_VELOCITY = 2.0; // Увеличиваем базовую скорость
   private readonly ELECTRON_CHARGE = -1; // Отрицательный заряд электрона
-  private readonly HALL_EFFECT_FACTOR = 0.1; // Значительно увеличен для видимого эффекта
-  private readonly RANDOM_MOVEMENT_FACTOR = 0.0001; // Сильно уменьшен
+  private readonly HALL_EFFECT_FACTOR = 0.5; // Увеличиваем эффект Холла
+  private readonly RANDOM_MOVEMENT_FACTOR = 0.001; // Увеличиваем случайное движение
   private readonly RESET_POSITION_X = 2.5;
   private lastForce = new THREE.Vector3(); // Для отладки
 
@@ -41,8 +41,7 @@ export class HallEffectSimulation {
     // Сохраняем силу для отладки
     this.lastForce.copy(force);
     
-    // Применяем масштабирование
-    return force.multiplyScalar(this.HALL_EFFECT_FACTOR);
+    return force;
   }
 
   public initializeElectrons(count: number = this.ELECTRON_COUNT): void {
@@ -87,38 +86,43 @@ export class HallEffectSimulation {
   }
 
   public update(deltaTime: number): void {
-    if (!this.isRunning) return;
+    if (!this.isRunning) {
+      return;
+    }
     
     const dt = Math.min(deltaTime, 0.1);
     
     this.electrons.forEach(electron => {
-      // Обновляем скорость (против тока)
-      electron.velocity.x = -this.BASE_VELOCITY * this.current;
+      // Обновляем скорость с учетом тока
+      electron.velocity.x = -this.BASE_VELOCITY * (this.current / 7);
       
       // Вычисляем силу Лоренца
       const lorentzForce = this.calculateLorentzForce(electron.velocity, this.magneticField);
       
-      // Движение вдоль X (ток)
+      // Применяем силу Лоренца к скорости
+      electron.velocity.z += lorentzForce.z * dt * this.HALL_EFFECT_FACTOR;
+      
+      // Обновляем позицию
       electron.position.x += electron.velocity.x * dt;
+      electron.position.z += electron.velocity.z * dt;
       
-      // Движение вдоль Z (эффект Холла)
-      // Увеличиваем эффект для лучшей видимости
-      electron.position.z += lorentzForce.z * dt * Math.abs(this.magneticField);
-      
-      // Минимальные случайные флуктуации
+      // Добавляем случайное движение для реалистичности
       electron.position.y += (Math.random() - 0.5) * this.RANDOM_MOVEMENT_FACTOR;
+      electron.position.z += (Math.random() - 0.5) * this.RANDOM_MOVEMENT_FACTOR * 0.5;
       
-      // Сброс позиции
+      // Сброс позиции при выходе за пределы
       if (electron.position.x < -this.RESET_POSITION_X) {
         electron.position.x = this.RESET_POSITION_X;
         electron.position.y = Math.random() * 0.2 - 0.1;
         electron.position.z = 0; // Сбрасываем в центр по Z
+        electron.velocity.z = 0; // Сбрасываем скорость по Z
       }
       
-      // Ограничения
+      // Ограничиваем движение
       electron.position.y = THREE.MathUtils.clamp(electron.position.y, -0.2, 0.2);
       electron.position.z = THREE.MathUtils.clamp(electron.position.z, -0.4, 0.4);
       
+      // Обновляем позицию меша
       electron.mesh.position.copy(electron.position);
     });
 

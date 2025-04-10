@@ -11,7 +11,6 @@ export const HallEffect3D = () => {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const simulationRef = useRef<HallEffectSimulation | null>(null);
   const animationFrameRef = useRef<number>(0);
-  const arrowsRef = useRef<THREE.ArrowHelper[]>([]);
   const lastTimeRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
 
@@ -24,6 +23,10 @@ export const HallEffect3D = () => {
     if (!containerRef.current || isInitializedRef.current) return;
 
     console.log("Начало инициализации сцены");
+    console.log("Размеры контейнера:", {
+      width: containerRef.current.clientWidth,
+      height: containerRef.current.clientHeight
+    });
 
     // Создаем сцену
     const scene = new THREE.Scene();
@@ -37,14 +40,15 @@ export const HallEffect3D = () => {
       0.1,
       1000
     );
-    camera.position.set(3, 2, 4);
+    camera.position.set(3, 3, 4);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
     // Создаем рендерер
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      powerPreference: "high-performance"
+      powerPreference: "high-performance",
+      alpha: true
     });
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -76,24 +80,6 @@ export const HallEffect3D = () => {
     semiconductor.receiveShadow = true;
     scene.add(semiconductor);
 
-    // Добавляем стрелки магнитного поля
-    const arrowHelpers: THREE.ArrowHelper[] = [];
-    for (let x = -1.5; x <= 1.5; x += 0.75) {
-      for (let z = -0.4; z <= 0.4; z += 0.4) {
-        const arrowHelper = new THREE.ArrowHelper(
-          new THREE.Vector3(0, -1, 0),
-          new THREE.Vector3(x, 1.5, z),
-          1,
-          0x1e40af,
-          0.15,
-          0.1
-        );
-        arrowHelpers.push(arrowHelper);
-        scene.add(arrowHelper);
-      }
-    }
-    arrowsRef.current = arrowHelpers;
-
     // Добавляем стрелку тока
     const currentArrow = new THREE.ArrowHelper(
       new THREE.Vector3(1, 0, 0),
@@ -123,7 +109,13 @@ export const HallEffect3D = () => {
     isInitializedRef.current = true;
     lastTimeRef.current = performance.now();
 
+    // Принудительно вызываем событие resize для корректной инициализации размеров
+    window.dispatchEvent(new Event('resize'));
+
     console.log("Сцена инициализирована успешно");
+
+    // Рендерим первый кадр
+    renderer.render(scene, camera);
 
     // Очистка при размонтировании
     return () => {
@@ -146,48 +138,47 @@ export const HallEffect3D = () => {
   // Анимация
   useEffect(() => {
     if (!isInitializedRef.current || !sceneRef.current || !cameraRef.current || !rendererRef.current) {
+      console.log("Анимация пропущена: не инициализирована");
       return;
     }
 
-    console.log("Запуск анимации");
+    console.log("Запуск анимации, состояние:", isRunning ? "запущена" : "на паузе");
+    let frameId: number;
 
-    const animate = (currentTime: number) => {
+    const animate = () => {
       if (!sceneRef.current || !cameraRef.current || !rendererRef.current || !simulationRef.current) {
         return;
       }
 
+      const currentTime = performance.now();
       const deltaTime = Math.min((currentTime - lastTimeRef.current) * 0.001, 0.1);
       lastTimeRef.current = currentTime;
 
-      // Обновляем симуляцию
-      simulationRef.current.update(deltaTime);
+      if (isRunning) {
+        // Обновляем симуляцию только если она запущена
+        simulationRef.current.update(deltaTime);
 
-      // Вращаем камеру
-      const radius = 5;
-      const speed = 0.2;
-      cameraRef.current.position.x = radius * Math.cos(currentTime * 0.0002 * speed);
-      cameraRef.current.position.z = radius * Math.sin(currentTime * 0.0002 * speed);
-      cameraRef.current.lookAt(0, 0, 0);
+        // Вращаем камеру
+        const radius = 5;
+        const speed = 0.2;
+        cameraRef.current.position.x = radius * Math.cos(currentTime * 0.0002 * speed);
+        cameraRef.current.position.z = radius * Math.sin(currentTime * 0.0002 * speed);
+        cameraRef.current.lookAt(0, 0, 0);
+      }
 
-      // Обновляем стрелки магнитного поля
-      arrowsRef.current.forEach(arrow => {
-        arrow.scale.setY(magneticField / 50);
-      });
-
-      // Рендерим сцену
+      // Всегда рендерим сцену
       rendererRef.current.render(sceneRef.current, cameraRef.current);
-      animationFrameRef.current = requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
     };
 
-    lastTimeRef.current = performance.now();
-    animationFrameRef.current = requestAnimationFrame(animate);
-
+    frameId = requestAnimationFrame(animate);
+    
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (frameId) {
+        cancelAnimationFrame(frameId);
       }
     };
-  }, [magneticField]);
+  }, [isRunning, magneticField]);
 
   // Обработка изменения размера окна
   useEffect(() => {
@@ -225,10 +216,10 @@ export const HallEffect3D = () => {
 
   return (
     <div className="w-full h-full">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 h-full">
         {/* Main visualization card */}
-        <div className="lg:col-span-2">
-          <Card className="p-6 bg-white shadow-lg">
+        <div className="lg:col-span-2 h-full">
+          <Card className="p-6 bg-white shadow-lg h-full flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-gray-800">Визуализация эффекта Холла</h2>
               <button
@@ -253,13 +244,16 @@ export const HallEffect3D = () => {
                 )}
               </button>
             </div>
-            <div ref={containerRef} className="w-full h-[500px] rounded-lg overflow-hidden" />
+            <div 
+              ref={containerRef} 
+              className="flex-1 w-full min-h-[600px] rounded-lg overflow-hidden bg-slate-100 relative"
+            />
           </Card>
         </div>
 
         {/* Controls card */}
         <div className="lg:col-span-1">
-          <Card className="p-6 bg-white shadow-lg">
+          <Card className="p-6 bg-white shadow-lg sticky top-6">
             <h3 className="text-xl font-semibold text-gray-800 mb-6">Управление симуляцией</h3>
             
             <div className="space-y-6">
