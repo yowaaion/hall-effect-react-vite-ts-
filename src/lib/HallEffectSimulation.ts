@@ -16,7 +16,6 @@ export class HallEffectSimulation {
   private isRunning: boolean;
   private readonly ELECTRON_COUNT = 50;
   private readonly BASE_VELOCITY = 2.0; // Увеличиваем базовую скорость
-  private readonly ELECTRON_CHARGE = -1; // Отрицательный заряд электрона
   private readonly HALL_EFFECT_FACTOR = 0.5; // Увеличиваем эффект Холла
   private readonly RANDOM_MOVEMENT_FACTOR = 0.001; // Увеличиваем случайное движение
   private readonly RESET_POSITION_X = 2.5;

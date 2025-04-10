@@ -17,7 +17,7 @@ export const HallEffect3D = () => {
 
   const [current, setCurrent] = useState<number>(7);
   const [magneticField, setMagneticField] = useState<number>(49.33);
-  const [isRunning, setIsRunning] = useState(true);
+  const [isRunning] = useState(true);
 
   // Инициализация сцены
   useEffect(() => {

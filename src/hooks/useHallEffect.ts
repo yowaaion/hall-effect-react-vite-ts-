@@ -24,7 +24,7 @@ export const useHallEffect = (initialParams?: Partial<HallEffectParameters>) => 
   });
 
   const calculateResults = useCallback(() => {
-    const { current, magneticField, thickness, carrierDensity, temperature } = parameters;
+    const { current, magneticField, thickness, carrierDensity } = parameters;
 
     // Перевод значений в СИ
     const currentSI = current * 1e-3; // мА в А

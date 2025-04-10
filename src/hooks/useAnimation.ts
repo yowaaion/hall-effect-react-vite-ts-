@@ -1,5 +1,4 @@
 import { useRef, useCallback, useEffect } from 'react';
-import * as THREE from 'three';
 import { Electron } from '../types/hall-effect';
 import { ANIMATION_CONSTANTS, SIMULATION_LIMITS } from '../config/constants';
 
