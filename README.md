@@ -1,136 +1,188 @@
-# Визуализация эффекта Холла
+# Hall Effect 3D Visualization
 
-Интерактивная 3D визуализация эффекта Холла, реализованная с использованием React, Three.js и TypeScript.
+An interactive 3D visualization of the Hall Effect implemented using React, Three.js, and TypeScript. This educational tool demonstrates the physics of the Hall Effect with accurate electron behavior, magnetic field interactions, and current flow visualization.
 
-## Описание
+## Overview
 
-Данное приложение демонстрирует эффект Холла - физическое явление, возникающее при протекании тока через проводник, помещенный в магнитное поле. Визуализация позволяет наблюдать:
-- Движение электронов в проводнике
-- Отклонение электронов под действием силы Лоренца
-- Влияние величины тока и магнитного поля на поведение электронов
+The Hall Effect is a fundamental phenomenon in electromagnetism where a voltage difference (Hall voltage) is produced across an electrical conductor, transverse to the electric current and magnetic field. This visualization demonstrates:
 
-## Технологический стек
+- Electron movement in a semiconductor
+- Electron deflection due to the Lorentz force
+- Charge accumulation on semiconductor edges
+- Visual representation of current and magnetic field
 
-- **React** - для построения пользовательского интерфейса
-- **Three.js** - для 3D визуализации
-- **TypeScript** - для типизации и улучшения разработки
-- **Tailwind CSS** - для стилизации компонентов
+## Tech Stack
 
-## Архитектура
+- **React** - User interface and component structure
+- **Three.js** - 3D visualization engine
+- **TypeScript** - Type safety and improved development experience
+- **Tailwind CSS** - Styling and responsive design
 
-Проект организован по методологии Feature-Sliced Design (FSD):
+## Project Structure
 
 ```
 src/
-├── app/               # Инициализация приложения
-├── entities/          # Бизнес-сущности
-│   └── electron/      # Сущность электрона
-│       ├── model/     # Типы и константы
-│       ├── lib/       # Утилиты
-│       └── ui/        # Компоненты визуализации
-├── features/          # Функциональные модули
-│   └── hall-effect/   # Функционал эффекта Холла
-│       ├── model/     # Логика симуляции
-│       └── ui/        # Компоненты управления
-├── widgets/           # Композиционные блоки
+├── widgets/
 │   └── hall-effect-visualization/
-│       └── ui/        # Основной компонент визуализации
-└── shared/           # Переиспользуемые ресурсы
-    ├── ui/           # UI компоненты
-    ├── lib/          # Общие утилиты
-    └── config/       # Конфигурации
+│       ├── config/
+│       │   └── constants.ts           # Physics and visual constants
+│       ├── lib/
+│       │   ├── components/            # Visualization components
+│       │   │   ├── arrows.ts          # Arrow visualizations
+│       │   │   ├── current.ts         # Current flow visualization
+│       │   │   ├── environment.ts     # Scene environment
+│       │   │   ├── magnetic-field.ts  # Magnetic field visualization
+│       │   │   └── semiconductor.ts   # Semiconductor visualization
+│       │   ├── physics/               # Physics calculations
+│       │   ├── utils/                 # Utility functions
+│       │   │   └── types.ts           # Type definitions
+│       │   ├── electron-simulation.ts # Electron simulation logic
+│       │   └── visualization.ts       # Main visualization setup
+│       └── ui/                        # React components
+├── components/                        # Shared React components
+└── ...
 ```
 
-## Физическая модель
+## Physics Model
 
-### Основные компоненты
-1. **Электроны**
-   - Представлены как сферические частицы
-   - Движутся против направления тока
-   - Подвержены силе Лоренца в магнитном поле
+### Key Components
 
-2. **Магнитное поле**
-   - Направлено вертикально вниз
-   - Визуализируется стрелками
-   - Сила пропорциональна заданному значению
+1. **Electrons**
+   - Represented as glowing spherical particles
+   - Move against conventional current direction (physically accurate)
+   - Affected by Lorentz force in magnetic field
+   - Accumulate at semiconductor edges
 
-3. **Электрический ток**
-   - Направлен вдоль проводника
-   - Определяет скорость движения электронов
+2. **Magnetic Field**
+   - Directed vertically (along y-axis)
+   - Visualized with arrows and field lines
+   - Strength proportional to user input
 
-### Формулы и расчеты
+3. **Current Flow**
+   - Directed along the semiconductor length
+   - Determines electron velocity
+   - Visualized with animated arrows
 
-1. **Сила Лоренца**:
+4. **Hall Voltage**
+   - Created by charge accumulation
+   - Proportional to current and magnetic field strength
+   - Visualized as a potential difference across semiconductor
+
+### Formulas and Physics
+
+1. **Lorentz Force**:
    ```
    F = q[v×B]
    ```
-   где:
-   - q - заряд электрона (отрицательный)
-   - v - вектор скорости электрона
-   - B - вектор магнитного поля
-   - × - векторное произведение
+   where:
+   - q - electron charge (negative)
+   - v - electron velocity vector
+   - B - magnetic field vector
+   - × - cross product
 
-2. **Отклонение электронов**:
-   - Направление определяется правилом левой руки
-   - Величина пропорциональна току и магнитному полю
+2. **Hall Voltage**:
+   ```
+   V_H = (I×B)/(n×e×d)
+   ```
+   where:
+   - I - current
+   - B - magnetic field strength
+   - n - charge carrier density
+   - e - elementary charge
+   - d - semiconductor thickness
 
-## Использование
+## Key Features
 
-1. **Управление током**:
-   - Ползунок в диапазоне 0-10 А
-   - Влияет на скорость движения электронов
+1. **High-Performance Rendering**
+   - Optimized Three.js rendering pipeline
+   - Efficient electron movement calculations
+   - Limited deltaTime for animation stability
 
-2. **Управление магнитным полем**:
-   - Ползунок в диапазоне 0-100 мТл
-   - Влияет на силу отклонения электронов
+2. **Physics Accuracy**
+   - Proper Lorentz force calculations
+   - Realistic electron behavior
+   - Accurate visualization of Hall Effect phenomena
 
-## Установка и запуск
+3. **Visual Quality**
+   - Custom materials with emissive properties
+   - Realistic lighting and shadows
+   - Smooth animations and transitions
 
-1. Клонируйте репозиторий:
+4. **Responsive Interface**
+   - Adapts to different screen sizes
+   - Intuitive controls for current and magnetic field
+   - Real-time parameter updates
+
+## Implementation Details
+
+### Electron Simulation
+
+The electron simulation is handled by the `ElectronSimulation` class, which:
+- Creates and manages electron particles
+- Calculates electron movement based on current
+- Applies Lorentz force based on magnetic field
+- Handles visual effects like pulsating size and color
+
+```typescript
+// Key methods:
+initializeElectrons(count: number): Electron[]
+updateElectrons(electrons: Electron[], deltaTime: number, current: number, magneticField: number): void
+```
+
+### Visualization Elements
+
+1. **Magnetic Field Arrows**
+   - Direction indicates field orientation
+   - Size and opacity reflect field strength
+   - Blue color for easy identification
+
+2. **Current Arrows**
+   - Flow along semiconductor length
+   - Size and animation speed reflect current strength
+   - Red/orange color scheme
+
+3. **Semiconductor**
+   - Semi-transparent to show internal electron movement
+   - Side contacts for Hall voltage measurement
+   - Optional doping visualization
+
+4. **Environment**
+   - Grid and ground plane for spatial reference
+   - Ambient and directional lighting
+   - Camera controls for user exploration
+
+## Installation
+
+1. Clone the repository:
    ```bash
-   git clone [url-репозитория]
+   git clone [repository-url]
    ```
 
-2. Установите зависимости:
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-3. Запустите проект:
+3. Start the development server:
    ```bash
    npm run dev
    ```
 
-## Особенности реализации
+## Usage
 
-1. **Производительность**:
-   - Оптимизированный рендеринг Three.js
-   - Ограничение deltaTime для стабильной анимации
-   - Эффективное управление ресурсами WebGL
+1. **Current Control**:
+   - Adjust slider to set current value (0-10 A)
+   - Affects electron speed and Hall Effect magnitude
 
-2. **Физическая точность**:
-   - Корректное моделирование эффекта Холла
-   - Реалистичное поведение электронов
-   - Точные векторные расчеты
+2. **Magnetic Field Control**:
+   - Adjust slider to set magnetic field strength (0-100 mT)
+   - Affects electron deflection and Hall voltage
 
-3. **Пользовательский опыт**:
-   - Интуитивное управление
-   - Плавная анимация
-   - Информативная визуализация
+3. **Visualization Interactions**:
+   - Rotate: Left-click drag
+   - Pan: Right-click drag
+   - Zoom: Mouse wheel
 
-## Разработка
-
-### Добавление новых функций
-
-1. Создайте новую фичу в директории `features/`
-2. Добавьте необходимые компоненты в `shared/ui/`
-3. Интегрируйте в основной компонент визуализации
-
-### Модификация физической модели
-
-1. Измените константы в `entities/electron/model/constants.ts`
-2. Обновите расчеты в `features/hall-effect/model/HallEffectSimulation.ts`
-
-## Лицензия
+## License
 
 MIT

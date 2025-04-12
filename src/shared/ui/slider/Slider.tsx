@@ -4,9 +4,10 @@ interface SliderProps {
   min: number;
   max: number;
   step?: number;
+  className?: string;
 }
 
-export const Slider = ({ value, onChange, min, max, step = 1 }: SliderProps) => {
+export const Slider = ({ value, onChange, min, max, step = 1, className = '' }: SliderProps) => {
   return (
     <input
       type="range"
@@ -15,7 +16,7 @@ export const Slider = ({ value, onChange, min, max, step = 1 }: SliderProps) => 
       min={min}
       max={max}
       step={step}
-      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+      className={`w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ${className}`}
     />
   );
 }; 

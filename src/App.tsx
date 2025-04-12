@@ -1,5 +1,5 @@
 import './App.css'
-import { HallEffect3D } from './components/HallEffect3D'
+import { HallEffect3D } from './widgets/hall-effect-visualization/ui/HallEffect3D'
 
 function App() {
   return (
