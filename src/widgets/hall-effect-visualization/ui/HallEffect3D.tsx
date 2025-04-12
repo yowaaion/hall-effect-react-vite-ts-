@@ -25,8 +25,8 @@ export const HallEffect3D = () => {
   const simulationRef = useRef<ElectronSimulation | null>(null);
   
   // Referencing 3D objects
-  const magneticArrowsRef = useRef<THREE.Group | null>(null);
-  const lorentzArrowsRef = useRef<THREE.Group | null>(null);
+  const magneticArrowsRef = useRef<THREE.ArrowHelper[]>([]);
+  const lorentzArrowsRef = useRef<LorentzArrow[]>([]);
   const currentArrowRef = useRef<{
     mainArrow: THREE.ArrowHelper;
     smallArrows: THREE.Mesh[];
@@ -37,18 +37,17 @@ export const HallEffect3D = () => {
   const lastTimeRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
 
-  // Начинаем с небольших ненулевых значений для начальной визуализации
-  const [current, setCurrent] = useState<number>(2);
-  const [magneticField, setMagneticField] = useState<number>(30);
-  const [isRunning] = useState(true);
+  // Начинаем с нулевых значений для правильной визуализации
+  const [current, setCurrent] = useState<number>(0);
+  const [magneticField, setMagneticField] = useState<number>(0);
 
-  // Инициализация сцены - запускается только один раз при монтировании 
+  // Инициализация сцены - запускается только один раз при монтировании
   useEffect(() => {
     if (!containerRef.current || !canvasRef.current || isInitializedRef.current) return;
 
     const container = containerRef.current;
     const canvas = canvasRef.current;
-
+    
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf0f5ff); // Более приятный голубоватый фон
     sceneRef.current = scene;
@@ -109,31 +108,21 @@ export const HallEffect3D = () => {
 
     // Создание визуальных элементов для магнитного поля
     const magneticArrows = createMagneticFieldArrows();
-    // Сразу установим видимость стрелок магнитного поля
-    magneticArrows.visible = magneticField > 0.1;
-    scene.add(magneticArrows);
+    magneticArrows.forEach(arrow => {
+      arrow.visible = false; // Начально скрываем стрелки магнитного поля
+      scene.add(arrow);
+    });
     magneticArrowsRef.current = magneticArrows;
 
-    // Создание визуальных элементов для силы Лоренца
-    const lorentzArrows = createLorentzForceArrows();
-    // Установим видимость стрелок Лоренца (зависит от тока и магнитного поля)
-    lorentzArrows.visible = current > 0.1 && magneticField > 0.1;
-    scene.add(lorentzArrows);
+    // Создание визуальных элементов для силы Лоренца - добавляем стрелки!
+    const lorentzArrows = createLorentzForceArrows(scene);
     lorentzArrowsRef.current = lorentzArrows;
 
     // Создание стрелок тока
-    const currentArrows = createCurrentArrows();
-    // Установим видимость основной стрелки тока
-    currentArrows.mainArrow.visible = current > 0.1;
-    // Добавляем основную стрелку в сцену
-    scene.add(currentArrows.mainArrow);
-    
-    // Добавляем и настраиваем маленькие стрелки тока
-    currentArrows.smallArrows.forEach((arrow, index) => {
-      // Показываем только некоторые стрелки в зависимости от силы тока
-      arrow.visible = current > 0.1 && index < Math.max(1, Math.min(currentArrows.smallArrows.length, Math.floor(current * 1.2)));
-      scene.add(arrow);
-    });
+    const currentArrows = createCurrentArrows(scene);
+    // Начально скрываем стрелки тока
+    currentArrows.mainArrow.visible = false;
+    currentArrows.smallArrows.forEach(arrow => arrow.visible = false);
     currentArrowRef.current = currentArrows;
 
     // Инициализация системы электронов
@@ -141,44 +130,6 @@ export const HallEffect3D = () => {
     const electrons = electronSimulation.initializeElectrons();
     electronsRef.current = electrons;
     simulationRef.current = electronSimulation;
-
-    // Сразу запускаем обновление с начальными значениями
-    if (simulationRef.current && electrons.length > 0) {
-      simulationRef.current.updateElectrons(
-        electrons,
-        0.016,
-        current,
-        magneticField,
-        performance.now() * 0.001
-      );
-    }
-
-    // Обновляем визуальные элементы с начальными значениями
-    if (magneticArrowsRef.current) {
-      updateMagneticFieldArrows(
-        magneticArrowsRef.current,
-        magneticField,
-        performance.now() * 0.001
-      );
-    }
-    
-    if (lorentzArrowsRef.current) {
-      updateLorentzForceArrows(
-        lorentzArrowsRef.current,
-        magneticField,
-        current,
-        performance.now() * 0.001
-      );
-    }
-    
-    if (currentArrowRef.current) {
-      updateCurrentArrows(
-        currentArrowRef.current.mainArrow,
-        currentArrowRef.current.smallArrows,
-        current,
-        0.016
-      );
-    }
 
     // Рендерим первый кадр
     renderer.render(scene, camera);
@@ -218,14 +169,15 @@ export const HallEffect3D = () => {
         return;
       }
 
-      // Расчет deltaTime с ограничением максимального значения для стабильности
+      // Расчет deltaTime
       const currentTime = performance.now();
-      const deltaTime = Math.min((currentTime - prevTime) * 0.001, 0.05); // в секундах, максимум 50 мс
+      const deltaTime = (currentTime - prevTime) * 0.001; // в секундах
       prevTime = currentTime;
 
-      // Текущие значения из state
-      const currentValue = current;
-      const magneticFieldValue = magneticField;
+      // Текущие значения из state (не будет вызывать перезапуск анимации)
+      // Добавляем защиту от null/undefined значений
+      const currentValue = Math.max(0, current ?? 0);
+      const magneticFieldValue = Math.max(0, magneticField ?? 0);
 
       // Обновляем симуляцию электронов
       if (simulationRef.current && electronsRef.current.length > 0) {
@@ -238,52 +190,31 @@ export const HallEffect3D = () => {
         );
       }
 
-      // Улучшенное плавное вращение камеры с различной скоростью для разных секторов
-      // Используем более сложные синусоидальные шаблоны для естественного движения
-      const time = currentTime * 0.0005; // Замедляем общую скорость для более плавного движения
-      
-      // Переменная скорость движения камеры в зависимости от позиции
-      const cameraSpeed = 0.002 + Math.sin(time) * 0.0015;
+      // Плавное вращение камеры с переменной скоростью
+      // Делаем более плавным и интересным - камера двигается медленнее на "интересных" ракурсах
+      const cameraSpeed = 0.0015 + Math.sin(cameraAngle * 2) * 0.0005;
       cameraAngle += cameraSpeed;
-      
-      // Радиус орбиты камеры с небольшими вариациями
-      const baseRadius = 5.0;
-      const radiusVariation = 0.7;
-      const radius = baseRadius + Math.sin(time * 0.7) * radiusVariation;
-      
-      // Высота камеры также меняется синусоидально
-      const baseHeight = 2.2;
-      const heightVariation = 0.8;
-      const height = baseHeight + Math.sin(time * 0.5) * heightVariation;
-      
-      // Обновляем позицию камеры
+      const radius = 5 + Math.sin(cameraAngle * 0.5) * 0.5;
+      const height = 2 + Math.sin(cameraAngle * 0.7) * 0.5;
       cameraRef.current.position.x = radius * Math.cos(cameraAngle);
       cameraRef.current.position.y = height;
       cameraRef.current.position.z = radius * Math.sin(cameraAngle);
-      
-      // Точка фокуса камеры тоже немного перемещается для более естественного вида
-      const targetX = Math.sin(time * 0.3) * 0.3;
-      const targetY = 0.1 + Math.sin(time * 0.4) * 0.1;
-      cameraRef.current.lookAt(targetX, targetY, 0);
+      cameraRef.current.lookAt(0, 0, 0);
 
       // Обновляем стрелки магнитного поля
-      if (magneticArrowsRef.current) {
-        updateMagneticFieldArrows(
-          magneticArrowsRef.current,
-          magneticFieldValue,
-          currentTime * 0.001
-        );
-      }
+      updateMagneticFieldArrows(
+        magneticArrowsRef.current,
+        magneticFieldValue,
+        currentTime * 0.001
+      );
 
       // Обновляем стрелки силы Лоренца
-      if (lorentzArrowsRef.current) {
-        updateLorentzForceArrows(
-          lorentzArrowsRef.current,
-          magneticFieldValue,
-          currentValue,
-          currentTime * 0.001
-        );
-      }
+      updateLorentzForceArrows(
+        lorentzArrowsRef.current,
+        magneticFieldValue,
+        currentValue,
+        currentTime * 0.001
+      );
 
       // Обновляем стрелки тока
       if (currentArrowRef.current) {
@@ -304,7 +235,7 @@ export const HallEffect3D = () => {
 
     // Запускаем анимацию
     rafId = requestAnimationFrame(animate);
-
+    
     // Очистка
     return () => {
       if (rafId) {
@@ -313,89 +244,65 @@ export const HallEffect3D = () => {
     };
   }, []); // Пустой массив зависимостей - запускаем только один раз
 
-  // Обработчики изменения значений с немедленным форсированным обновлением
-  const handleCurrentChange = (value: number) => {
-    // Форсированно применяем новые значения к симуляции
-    setCurrent(value);
-    
-    // Немедленное обновление визуализации для отзывчивости интерфейса
-    if (isInitializedRef.current && simulationRef.current && 
-        electronsRef.current.length > 0 && rendererRef.current && 
-        sceneRef.current && cameraRef.current && currentArrowRef.current) {
-      
-      // Обновляем электроны с нулевым deltaTime, чтобы только применить новое значение
-      // но без перемещения
+  // Эффект для немедленного обновления при изменении значений
+  useEffect(() => {
+    // Если симуляция еще не инициализирована - выходим
+    if (!isInitializedRef.current || !simulationRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) {
+      return;
+    }
+
+    // Обновляем симуляцию электронов с новыми значениями
+    if (electronsRef.current.length > 0) {
+      // Делаем мгновенное обновление с малым deltaTime для плавности
       simulationRef.current.updateElectrons(
-        electronsRef.current,
-        0,
-        value,
-        magneticField,
+        electronsRef.current, 
+        0.016, // Фиксированный малый deltaTime
+        Math.max(0, current ?? 0), // Обеспечиваем неотрицательные значения
+        Math.max(0, magneticField ?? 0),
         performance.now() * 0.001
       );
-      
-      // Обновляем стрелки тока для мгновенной обратной связи
+    }
+
+    // Обновляем стрелки магнитного поля
+    updateMagneticFieldArrows(
+      magneticArrowsRef.current,
+      Math.max(0, magneticField ?? 0),
+      performance.now() * 0.001
+    );
+
+    // Обновляем стрелки силы Лоренца
+    updateLorentzForceArrows(
+      lorentzArrowsRef.current,
+      Math.max(0, magneticField ?? 0),
+      Math.max(0, current ?? 0),
+      performance.now() * 0.001
+    );
+
+    // Обновляем стрелки тока
+    if (currentArrowRef.current) {
       updateCurrentArrows(
         currentArrowRef.current.mainArrow,
         currentArrowRef.current.smallArrows,
-        value,
-        0.016
+        Math.max(0, current ?? 0),
+        0.016 // Фиксированный малый deltaTime
       );
-      
-      // Обновляем стрелки силы Лоренца в зависимости от тока и магнитного поля
-      if (lorentzArrowsRef.current) {
-        updateLorentzForceArrows(
-          lorentzArrowsRef.current,
-          magneticField,
-          value,
-          performance.now() * 0.001
-        );
-      }
-      
-      // Рендерим сцену для мгновенного отображения изменений
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
     }
+
+    // Рендерим сцену
+    rendererRef.current.render(sceneRef.current, cameraRef.current);
+  }, [current, magneticField]); // Запускаем при изменении значений
+
+  // Обработчики изменения значений с проверкой
+  const handleCurrentChange = (value: number) => {
+    // Гарантируем, что значение неотрицательное
+    const validValue = Math.max(0, value);
+    setCurrent(validValue);
   };
 
   const handleMagneticFieldChange = (value: number) => {
-    // Форсированно применяем новые значения к симуляции
-    setMagneticField(value);
-    
-    // Немедленное обновление визуализации для лучшей отзывчивости
-    if (isInitializedRef.current && simulationRef.current && 
-        electronsRef.current.length > 0 && rendererRef.current && 
-        sceneRef.current && cameraRef.current) {
-      
-      // Обновляем электроны без перемещения - только применяем новое значение магнитного поля
-      simulationRef.current.updateElectrons(
-        electronsRef.current,
-        0,
-        current,
-        value,
-        performance.now() * 0.001
-      );
-      
-      // Обновляем стрелки магнитного поля для мгновенной обратной связи
-      if (magneticArrowsRef.current) {
-        updateMagneticFieldArrows(
-          magneticArrowsRef.current,
-          value,
-          performance.now() * 0.001
-        );
-      }
-      
-      // Обновляем стрелки силы Лоренца для мгновенной обратной связи
-      if (lorentzArrowsRef.current) {
-        updateLorentzForceArrows(
-          lorentzArrowsRef.current,
-          value,
-          current,
-          performance.now() * 0.001
-        );
-      }
-      
-      // Рендерим сцену для мгновенного отображения изменений
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
-    }
+    // Гарантируем, что значение неотрицательное
+    const validValue = Math.max(0, value);
+    setMagneticField(validValue);
   };
 
   return (
@@ -476,7 +383,7 @@ export const HallEffect3D = () => {
                   />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>Ток: {current.toFixed(1)} А</span>
-                    <span>{current > 0.1 ? "Движение электронов →" : "Нет движения"}</span>
+                    <span>Скорость электронов ↑</span>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -491,7 +398,7 @@ export const HallEffect3D = () => {
                   />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>B: {magneticField.toFixed(1)} мТл</span>
-                    <span>{magneticField > 0.1 ? "Сила Лоренца ↑" : "Нет отклонения"}</span>
+                    <span>Сила Лоренца ↑</span>
                   </div>
                 </div>
               </Card>

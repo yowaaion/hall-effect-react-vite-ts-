@@ -13,9 +13,6 @@ export interface Electron {
 export class ElectronSimulation {
   private electrons: Electron[] = [];
   private scene: THREE.Scene;
-  private lastCurrentVal: number = 0;
-  private lastMagneticFieldVal: number = 0;
-  private movementEnabled: boolean = true;
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -25,19 +22,16 @@ export class ElectronSimulation {
     this.dispose();
     
     this.electrons = Array.from({ length: count }, (_, i) => {
-      // Распределяем электроны равномерно внутри полупроводника
       const position = new THREE.Vector3(
-        Math.random() * 4 - 2,      // X от -2 до 2
-        Math.random() * 0.2 - 0.1,  // Y от -0.1 до 0.1
-        Math.random() * 0.4 - 0.2   // Z от -0.2 до 0.2
+        Math.random() * 4 - 2,
+        Math.random() * 0.2 - 0.1,
+        Math.random() * 0.4 - 0.2
       );
       
       const mesh = createBeautifulElectronMesh(position);
       this.scene.add(mesh);
 
-      // Электрон может иметь начальную ненулевую скорость
-      // В зависимости от текущих начальных настроек тока
-      const velocity = new THREE.Vector3(0, 0, 0);
+      const velocity = new THREE.Vector3(-0.5, 0, 0);
 
       return {
         position,
@@ -49,36 +43,7 @@ export class ElectronSimulation {
       };
     });
     
-    // Активируем движение по умолчанию
-    this.movementEnabled = true;
-    
     return this.electrons;
-  }
-  
-  // Метод для сброса положения электронов при переходе от ненулевого тока к нулевому
-  private resetElectronPositions(): void {
-    this.electrons.forEach(electron => {
-      // Распределяем электроны равномерно внутри полупроводника
-      electron.position.set(
-        Math.random() * 4 - 2,      // X от -2 до 2
-        Math.random() * 0.2 - 0.1,  // Y от -0.1 до 0.1
-        Math.random() * 0.4 - 0.2   // Z от -0.2 до 0.2
-      );
-      
-      // Сбрасываем скорость до нуля
-      electron.velocity.set(0, 0, 0);
-      
-      // Обновляем положение меша
-      electron.mesh.position.copy(electron.position);
-    });
-    
-    // Отключаем движение
-    this.movementEnabled = false;
-  }
-  
-  // Метод для возобновления движения электронов
-  private resumeElectronMovement(): void {
-    this.movementEnabled = true;
   }
   
   public updateElectrons(
@@ -88,107 +53,43 @@ export class ElectronSimulation {
     magneticFieldVal: number,
     time: number
   ): void {
-    // Защита от некорректных значений
-    const current = Math.max(0, currentVal || 0);
-    const magneticField = Math.max(0, magneticFieldVal || 0);
-    const dt = Math.min(deltaTime, 0.033); // Ограничиваем deltaTime для стабильности
+    const dt = Math.min(deltaTime, 0.033);
     
-    // Проверяем переходы в значениях тока и магнитного поля
-    const currentTransitionToZero = this.lastCurrentVal > 0.1 && current <= 0.1;
-    const currentTransitionFromZero = this.lastCurrentVal <= 0.1 && current > 0.1;
-    
-    // Сохраняем текущие значения для следующего вызова
-    this.lastCurrentVal = current;
-    this.lastMagneticFieldVal = magneticField;
-    
-    // Если ток стал нулевым - сбрасываем положения электронов и останавливаем движение
-    if (currentTransitionToZero) {
-      this.resetElectronPositions();
-    } 
-    // Если ток стал ненулевым - возобновляем движение
-    else if (currentTransitionFromZero) {
-      this.resumeElectronMovement();
-    }
-    
-    // Если ток около нуля - только обновляем визуальные эффекты и ГАРАНТИРУЕМ остановку
-    if (current <= 0.1) {
-      electrons.forEach(electron => {
-        // Принудительно устанавливаем нулевую скорость
-        electron.velocity.set(0, 0, 0);
-        
-        // Делаем размер электрона пульсирующим с минимальной амплитудой
-        const pulse = 1 + Math.sin(time * 2 + electron.id * 0.2) * 0.05;
-        electron.mesh.scale.set(pulse, pulse, pulse);
-        
-        // Меняем цвет на более тусклый (неактивный)
-        const electronMaterial = electron.mesh.material as THREE.MeshStandardMaterial;
-        electronMaterial.emissive.setRGB(0.1, 0.1, 0.5); // Тусклый синий
-        electronMaterial.emissiveIntensity = 0.2;
-        
-        // Замораживаем положение
-        electron.mesh.position.copy(electron.position);
-      });
-      return;
-    }
-    
-    // Если движение не активировано, но ток > 0, активируем движение
-    if (!this.movementEnabled && current > 0.1) {
-      this.resumeElectronMovement();
-    }
-    
-    // Пропускаем обновление, если движение отключено
-    if (!this.movementEnabled) return;
-    
-    // Флаг для имитации накопления зарядов на краях полупроводника
-    // Это происходит только при значительном магнитном поле и токе
-    const showEdgeAccumulation = magneticField > 10 && current > 1;
+    // Визуализация накопления зарядов на краях полупроводника
+    const showEdgeAccumulation = magneticFieldVal > 5 && currentVal > 1;
     
     electrons.forEach(electron => {
-      // Скорость электронов пропорциональна силе тока
-      // В реальности электроны движутся от - к +, но для наглядности делаем движение слева направо
-      const baseVelocity = 0.5 * (current / 5);
-      electron.velocity.x = -baseVelocity;
+      // Используем переданные значения для более реалистичной симуляции
+      // Сила тока влияет на скорость электронов
+      electron.velocity.x = -0.5 * Math.max(0.2, currentVal / 5);
       
-      // Расчет силы Лоренца: F = q[v×B]
-      // Для электронов q отрицательный, направление по правилу левой руки
+      // Более реалистичный расчет силы Лоренца: F = q[v×B]
+      // Для электронов q отрицательный, поэтому направление отклонения противоположное
       const force = new THREE.Vector3();
-      
-      // Магнитное поле направлено вниз (по оси -Y)
-      const B = new THREE.Vector3(0, -1, 0).multiplyScalar(magneticField / 50);
-      
-      // Вычисляем векторное произведение скорости и магнитного поля
+      const B = new THREE.Vector3(0, -1, 0).multiplyScalar(magneticFieldVal);
       force.crossVectors(electron.velocity, B);
       
-      // Умножаем на отрицательный заряд электрона
-      // Масштабируем для лучшей визуализации (сила Лоренца слаба)
-      const FORCE_SCALE = 0.2;
-      force.multiplyScalar(-FORCE_SCALE);
+      // Отрицательный заряд электрона * коэффициент силы
+      // Масштабируем эффект для лучшей визуализации
+      const FORCE_SCALE = 0.15;
+      force.multiplyScalar(-FORCE_SCALE); 
       
-      // Обновляем положение электрона по оси X (направление тока)
-      // Используем больший множитель для более заметного движения
-      electron.position.x += electron.velocity.x * dt * 1.5;
+      // Обновляем положение электрона по осям X и Z
+      electron.position.x += electron.velocity.x * dt;
+      electron.position.z += force.z * dt * 0.5; // Уменьшаем коэффициент для более реалистичного отклонения
       
-      // Отклонение по Z происходит только при наличии магнитного поля
-      if (magneticField > 0.1) {
-        // Сила Лоренца вызывает отклонение по оси Z
-        // Усиливаем эффект для лучшей видимости
-        electron.position.z += force.z * dt * 1.2;
-      }
+      // Небольшое случайное движение для реалистичности, но уменьшаем для плавности
+      electron.position.y += (Math.random() - 0.5) * 0.00005;
       
-      // Небольшое случайное движение для реалистичности
-      electron.position.y += (Math.random() - 0.5) * 0.0001;
-      
-      // Перенос электронов при выходе за границу
+      // Если электрон вышел за пределы полупроводника по X
       if (electron.position.x < -2.5) {
-        // Если электрон вышел слева, переносим его справа
         electron.position.x = 2.5;
+        // Случайное положение по Y и Z, но с учетом эффекта Холла
         electron.position.y = Math.random() * 0.2 - 0.1;
         
-        // В присутствии сильного магнитного поля и тока
-        // новые электроны появляются с учетом накопления заряда
+        // При сильном магнитном поле электроны стартуют уже отклоненными
         if (showEdgeAccumulation) {
-          // Смещаем начальное положение к нижней части полупроводника
-          // это имитирует отрицательное накопление зарядов на одной стороне
+          // Случайное значение, но с отрицательным смещением для имитации отрицательного накопления зарядов
           electron.position.z = Math.random() * 0.2 - 0.4;
         } else {
           electron.position.z = Math.random() * 0.4 - 0.2;
@@ -198,25 +99,23 @@ export class ElectronSimulation {
       // Ограничиваем положение электрона внутри полупроводника
       electron.position.y = THREE.MathUtils.clamp(electron.position.y, -0.2, 0.2);
       
-      // Имитация эффекта Холла - накопление зарядов на краях
+      // Имитация накопления зарядов на краях - электроны должны скапливаться на одном краю при сильном поле
       if (showEdgeAccumulation) {
-        // При сильном магнитном поле увеличиваем предел отклонения
-        const zLimit = 0.4 + (magneticField/100) * 0.1;
+        // Используем сигмоидную функцию для плавного ограничения положения по Z
+        // За пределы полупроводника электроны выходить не должны, но должны отклоняться
+        const zLimit = 0.4 + (magneticFieldVal/100) * 0.1; // Увеличиваем предел при сильном поле
         electron.position.z = THREE.MathUtils.clamp(electron.position.z, -zLimit, zLimit);
       } else {
         electron.position.z = THREE.MathUtils.clamp(electron.position.z, -0.4, 0.4);
       }
       
-      // Визуальные эффекты для электронов
-      // Размер и яркость зависят от скорости и положения
-      const velocityFactor = Math.abs(electron.velocity.x);
+      // Делаем размер электрона пульсирующим, чтобы добавить жизни
       const pulse = 1 + Math.sin(time * 0.003 + electron.id * 0.5) * 0.1;
       electron.mesh.scale.set(pulse, pulse, pulse);
       
-      // Меняем цвет в зависимости от скорости
+      // Меняем яркость свечения в зависимости от скорости
       const electronMaterial = electron.mesh.material as THREE.MeshStandardMaterial;
-      electronMaterial.emissive.setRGB(0.1, 0.3, 0.8);
-      electronMaterial.emissiveIntensity = 0.3 + velocityFactor * 0.5;
+      electronMaterial.emissiveIntensity = 0.3 + (Math.abs(electron.velocity.x) / 2) * 0.7;
       
       // Обновляем меш
       electron.mesh.position.copy(electron.position);
@@ -226,16 +125,8 @@ export class ElectronSimulation {
   public dispose(): void {
     this.electrons.forEach(electron => {
       this.scene.remove(electron.mesh);
-      if (electron.mesh) {
-        if (electron.mesh.geometry) electron.mesh.geometry.dispose();
-        if (electron.mesh.material) {
-          if (Array.isArray(electron.mesh.material)) {
-            electron.mesh.material.forEach(material => material.dispose());
-          } else {
-            electron.mesh.material.dispose();
-          }
-        }
-      }
+      electron.mesh.geometry.dispose();
+      (electron.mesh.material as THREE.Material).dispose();
     });
     this.electrons = [];
   }
