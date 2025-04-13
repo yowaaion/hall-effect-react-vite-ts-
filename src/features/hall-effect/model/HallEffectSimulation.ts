@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { Electron } from '@/entities/electron/model/types';
-import { ELECTRON_CONSTANTS } from '@/entities/electron/model/constants';
-import { createElectronMesh } from '@/entities/electron/lib/mesh';
+import { Electron } from '../../../entities/electron/model/types';
+import { ELECTRON_CONSTANTS } from '../../../entities/electron/model/constants';
+import { createElectronMesh } from '../../../entities/electron/lib/mesh';
 
 export class HallEffectSimulation {
   private electrons: Electron[] = [];

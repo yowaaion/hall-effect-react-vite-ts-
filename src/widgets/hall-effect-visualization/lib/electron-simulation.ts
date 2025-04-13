@@ -13,6 +13,8 @@ export interface Electron {
 export class ElectronSimulation {
   private electrons: Electron[] = [];
   private scene: THREE.Scene;
+  private lastCurrentVal: number = 0;
+  private movementEnabled: boolean = true;
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
