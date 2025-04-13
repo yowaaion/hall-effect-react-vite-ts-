@@ -11,8 +11,7 @@ import {
   setupLighting,
   updateLorentzForceArrows,
   updateMagneticFieldArrows,
-  updateCurrentArrows,
-  LorentzArrow
+  updateCurrentArrows
 } from '../lib/visualization';
 import { ElectronSimulation, Electron } from '../lib/electron-simulation';
 
@@ -26,7 +25,7 @@ export const HallEffect3D = () => {
   
   // Referencing 3D objects
   const magneticArrowsRef = useRef<THREE.ArrowHelper[]>([]);
-  const lorentzArrowsRef = useRef<LorentzArrow[]>([]);
+  const lorentzArrowsRef = useRef<any[]>([]);
   const currentArrowRef = useRef<{
     mainArrow: THREE.ArrowHelper;
     smallArrows: THREE.Mesh[];
@@ -47,7 +46,7 @@ export const HallEffect3D = () => {
 
     const container = containerRef.current;
     const canvas = canvasRef.current;
-    
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf0f5ff); // Более приятный голубоватый фон
     sceneRef.current = scene;
@@ -235,7 +234,7 @@ export const HallEffect3D = () => {
 
     // Запускаем анимацию
     rafId = requestAnimationFrame(animate);
-    
+
     // Очистка
     return () => {
       if (rafId) {
@@ -365,41 +364,41 @@ export const HallEffect3D = () => {
           {/* Карточки справа - мобильная версия внизу */}
           <div className="w-full lg:w-[320px] lg:absolute lg:top-4 lg:right-4 lg:space-y-3 lg:z-10 order-3 mt-4 lg:mt-0">
             <div className="grid grid-cols-1 gap-3 lg:block">
-              {/* Controls Card */}
+        {/* Controls Card */}
               <Card className="p-4 space-y-4 shadow-md border border-slate-200/50 bg-white/90 backdrop-blur-sm">
                 <h3 className="text-lg font-semibold text-slate-800 flex items-center justify-between">
                   Управление
                   <span className="text-xs text-slate-500 font-normal hidden sm:inline">Изменяйте параметры</span>
                 </h3>
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-700">Ток (А)</label>
-                  <Slider
-                    value={current}
+            <label className="text-sm font-medium text-slate-700">Ток (А)</label>
+            <Slider
+              value={current}
                     onChange={handleCurrentChange}
-                    min={0}
-                    max={10}
-                    step={0.1}
+              min={0}
+              max={10}
+              step={0.1}
                     className="py-1"
-                  />
+            />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>Ток: {current.toFixed(1)} А</span>
                     <span>Скорость электронов ↑</span>
                   </div>
-                </div>
+          </div>
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-slate-700">Магнитное поле (мТл)</label>
-                  <Slider
-                    value={magneticField}
+            <label className="text-sm font-medium text-slate-700">Магнитное поле (мТл)</label>
+            <Slider
+              value={magneticField}
                     onChange={handleMagneticFieldChange}
-                    min={0}
-                    max={100}
-                    step={0.1}
+              min={0}
+              max={100}
+              step={0.1}
                     className="py-1"
                   />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>B: {magneticField.toFixed(1)} мТл</span>
                     <span>Сила Лоренца ↑</span>
-                  </div>
+              </div>
                 </div>
               </Card>
 

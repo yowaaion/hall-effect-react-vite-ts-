@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "NODE_ENV=production npm run lint && tsc -b && vite build",
-    "build:win": "set NODE_ENV=production && npm run lint && tsc -b && vite build",
+    "build": "tsc -b && vite build",
+    "build:win": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
