@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { createBeautifulElectronMesh } from './visualization';
 
 export interface Electron {
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   id: number;
-  mesh: THREE.Mesh;
   initialPosition: THREE.Vector3;
   trailPoints: THREE.Vector3[]; // Точки для следа электрона
+  // Мы больше не храним mesh в каждом электроне
+  // mesh: THREE.Mesh;
 }
 
 export class ElectronSimulation {
@@ -16,6 +16,15 @@ export class ElectronSimulation {
   private lastCurrentVal: number = 0;
   private movementEnabled: boolean = true;
   
+  // Добавляем InstancedMesh для оптимизации рендеринга
+  private electronsMesh: THREE.InstancedMesh | null = null;
+  private electronsGlow: THREE.InstancedMesh | null = null;
+  private electronsGeometry: THREE.SphereGeometry | null = null;
+  private electronsMaterial: THREE.MeshStandardMaterial | null = null;
+  private glowGeometry: THREE.SphereGeometry | null = null;
+  private glowMaterial: THREE.MeshBasicMaterial | null = null;
+  private dummy: THREE.Object3D = new THREE.Object3D();
+  
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
@@ -23,29 +32,116 @@ export class ElectronSimulation {
   public initializeElectrons(count: number = 18): Electron[] {
     this.dispose();
     
+    // Создаем общую геометрию и материалы для всех электронов
+    this.electronsGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+    this.electronsMaterial = new THREE.MeshStandardMaterial({
+      color: 0x3b82f6,
+      emissive: 0x1e40af,
+      emissiveIntensity: 0.7,
+      roughness: 0.2,
+      metalness: 0.7,
+      transparent: true,
+      opacity: 0.9
+    });
+    
+    // Создаем геометрию и материал для свечения
+    this.glowGeometry = new THREE.SphereGeometry(0.08, 12, 12);
+    this.glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x60a5fa,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.BackSide
+    });
+    
+    // Создаем InstancedMesh для электронов и их свечения
+    this.electronsMesh = new THREE.InstancedMesh(
+      this.electronsGeometry,
+      this.electronsMaterial,
+      count
+    );
+    
+    this.electronsGlow = new THREE.InstancedMesh(
+      this.glowGeometry,
+      this.glowMaterial,
+      count
+    );
+    
+    // Добавляем в сцену
+    this.scene.add(this.electronsMesh);
+    this.scene.add(this.electronsGlow);
+    
+    // Настройка для теней
+    this.electronsMesh.castShadow = true;
+    this.electronsMesh.receiveShadow = true;
+    
+    // Создаем массив электронов
     this.electrons = Array.from({ length: count }, (_, i) => {
+      // Распределяем электроны равномерно внутри полупроводника
       const position = new THREE.Vector3(
-        Math.random() * 4 - 2,
-        Math.random() * 0.2 - 0.1,
-        Math.random() * 0.4 - 0.2
+        Math.random() * 4 - 2,      // X от -2 до 2
+        Math.random() * 0.2 - 0.1,  // Y от -0.1 до 0.1
+        Math.random() * 0.4 - 0.2   // Z от -0.2 до 0.2
       );
       
-      const mesh = createBeautifulElectronMesh(position);
-      this.scene.add(mesh);
-
+      // Базовая скорость электрона - направлена влево для физической точности
       const velocity = new THREE.Vector3(-0.5, 0, 0);
+      
+      // Устанавливаем позицию для этого экземпляра
+      this.dummy.position.copy(position);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      
+      if (this.electronsMesh) this.electronsMesh.setMatrixAt(i, this.dummy.matrix);
+      if (this.electronsGlow) this.electronsGlow.setMatrixAt(i, this.dummy.matrix);
 
       return {
         position,
         velocity,
         id: i,
-        mesh,
         initialPosition: position.clone(),
         trailPoints: [] // Пустой массив для хранения точек следа
       };
     });
     
+    // Обновляем матрицы экземпляров
+    if (this.electronsMesh) this.electronsMesh.instanceMatrix.needsUpdate = true;
+    if (this.electronsGlow) this.electronsGlow.instanceMatrix.needsUpdate = true;
+    
+    // Активируем движение по умолчанию
+    this.movementEnabled = true;
+    
     return this.electrons;
+  }
+  
+  private resetElectronPositions(): void {
+    this.electrons.forEach((electron, index) => {
+      // Распределяем электроны равномерно внутри полупроводника
+      electron.position.set(
+        Math.random() * 4 - 2,      // X от -2 до 2
+        Math.random() * 0.2 - 0.1,  // Y от -0.1 до 0.1
+        Math.random() * 0.4 - 0.2   // Z от -0.2 до 0.2
+      );
+      
+      // Обновляем позицию в InstancedMesh
+      this.dummy.position.copy(electron.position);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      
+      if (this.electronsMesh) this.electronsMesh.setMatrixAt(index, this.dummy.matrix);
+      if (this.electronsGlow) this.electronsGlow.setMatrixAt(index, this.dummy.matrix);
+    });
+    
+    // Обновляем матрицы экземпляров
+    if (this.electronsMesh) this.electronsMesh.instanceMatrix.needsUpdate = true;
+    if (this.electronsGlow) this.electronsGlow.instanceMatrix.needsUpdate = true;
+    
+    // Отключаем движение
+    this.movementEnabled = false;
+  }
+  
+  // Метод для возобновления движения электронов
+  private resumeElectronMovement(): void {
+    this.movementEnabled = true;
   }
   
   public updateElectrons(
@@ -55,43 +151,116 @@ export class ElectronSimulation {
     magneticFieldVal: number,
     time: number
   ): void {
-    const dt = Math.min(deltaTime, 0.033);
+    // Защита от некорректных значений
+    const current = Math.max(0, currentVal || 0);
+    const magneticField = Math.max(0, magneticFieldVal || 0);
+    const dt = Math.min(deltaTime, 0.033); // Ограничиваем deltaTime для стабильности
     
-    // Визуализация накопления зарядов на краях полупроводника
-    const showEdgeAccumulation = magneticFieldVal > 5 && currentVal > 1;
+    // Проверяем переходы в значениях тока
+    const currentTransitionToZero = this.lastCurrentVal > 0.1 && current <= 0.1;
+    const currentTransitionFromZero = this.lastCurrentVal <= 0.1 && current > 0.1;
     
-    electrons.forEach(electron => {
-      // Используем переданные значения для более реалистичной симуляции
-      // Сила тока влияет на скорость электронов
-      electron.velocity.x = -0.5 * Math.max(0.2, currentVal / 5);
+    // Сохраняем текущее значение для следующего вызова
+    this.lastCurrentVal = current;
+    
+    // Если ток стал нулевым - сбрасываем положения электронов
+    if (currentTransitionToZero) {
+      this.resetElectronPositions();
+    } 
+    // Если ток стал ненулевым - возобновляем движение
+    else if (currentTransitionFromZero) {
+      this.resumeElectronMovement();
+    }
+    
+    // Если ток близок к нулю - только обновляем визуальные эффекты
+    if (current <= 0.1) {
+      electrons.forEach((electron, index) => {
+        // Делаем размер электрона пульсирующим с минимальной амплитудой
+        const pulse = 1 + Math.sin(time * 2 + electron.id * 0.2) * 0.05;
+        
+        this.dummy.position.copy(electron.position);
+        this.dummy.scale.set(pulse, pulse, pulse);
+        this.dummy.updateMatrix();
+        
+        if (this.electronsMesh) this.electronsMesh.setMatrixAt(index, this.dummy.matrix);
+        if (this.electronsGlow) this.electronsGlow.setMatrixAt(index, this.dummy.matrix);
+        
+        // Обновляем материал для всех электронов
+        if (this.electronsMaterial) {
+          this.electronsMaterial.emissive.setRGB(0.1, 0.1, 0.5); // Тусклый синий
+          this.electronsMaterial.emissiveIntensity = 0.2;
+        }
+      });
       
-      // Более реалистичный расчет силы Лоренца: F = q[v×B]
-      // Для электронов q отрицательный, поэтому направление отклонения противоположное
+      // Обновляем матрицы экземпляров
+      if (this.electronsMesh) this.electronsMesh.instanceMatrix.needsUpdate = true;
+      if (this.electronsGlow) this.electronsGlow.instanceMatrix.needsUpdate = true;
+      
+      return;
+    }
+    
+    // Если движение не активировано, но ток > 0, активируем движение
+    if (!this.movementEnabled && current > 0.1) {
+      this.resumeElectronMovement();
+    }
+    
+    // Пропускаем обновление, если движение отключено
+    if (!this.movementEnabled) return;
+    
+    // Флаг для имитации накопления зарядов на краях полупроводника
+    // Это происходит только при значительном магнитном поле и токе
+    const showEdgeAccumulation = magneticField > 10 && current > 1;
+    
+    // Обновляем эмиссию для всех электронов в зависимости от скорости
+    if (this.electronsMaterial) {
+      const velocityFactor = 0.5 * (current / 5); // Скорость электронов
+      this.electronsMaterial.emissive.setRGB(0.1, 0.3, 0.8);
+      this.electronsMaterial.emissiveIntensity = 0.3 + velocityFactor * 0.5;
+    }
+    
+    electrons.forEach((electron, index) => {
+      // Скорость электронов пропорциональна силе тока
+      // В реальности электроны движутся от - к +, направление соответствует физике
+      const baseVelocity = 0.5 * (current / 5);
+      electron.velocity.x = -baseVelocity;
+      
+      // Расчет силы Лоренца: F = q[v×B]
+      // Для электронов q отрицательный, направление по правилу левой руки
       const force = new THREE.Vector3();
-      const B = new THREE.Vector3(0, -1, 0).multiplyScalar(magneticFieldVal);
+      
+      // Магнитное поле направлено вниз (по оси -Y)
+      const B = new THREE.Vector3(0, -1, 0).multiplyScalar(magneticField / 50);
+      
+      // Вычисляем векторное произведение скорости и магнитного поля
       force.crossVectors(electron.velocity, B);
       
-      // Отрицательный заряд электрона * коэффициент силы
-      // Масштабируем эффект для лучшей визуализации
-      const FORCE_SCALE = 0.15;
-      force.multiplyScalar(-FORCE_SCALE); 
+      // Умножаем на отрицательный заряд электрона
+      const FORCE_SCALE = 0.2;
+      force.multiplyScalar(-FORCE_SCALE);
       
-      // Обновляем положение электрона по осям X и Z
-      electron.position.x += electron.velocity.x * dt;
-      electron.position.z += force.z * dt * 0.5; // Уменьшаем коэффициент для более реалистичного отклонения
+      // Обновляем положение электрона по оси X (направление тока)
+      electron.position.x += electron.velocity.x * dt * 1.5;
       
-      // Небольшое случайное движение для реалистичности, но уменьшаем для плавности
-      electron.position.y += (Math.random() - 0.5) * 0.00005;
+      // Отклонение по Z происходит только при наличии магнитного поля
+      if (magneticField > 0.1) {
+        // Сила Лоренца вызывает отклонение по оси Z
+        electron.position.z += force.z * dt * 1.2;
+      }
       
-      // Если электрон вышел за пределы полупроводника по X
+      // Небольшое случайное движение для реалистичности
+      electron.position.y += (Math.random() - 0.5) * 0.0001;
+      
+      // Перенос электронов при выходе за границу
       if (electron.position.x < -2.5) {
+        // Если электрон вышел слева, переносим его справа
         electron.position.x = 2.5;
-        // Случайное положение по Y и Z, но с учетом эффекта Холла
         electron.position.y = Math.random() * 0.2 - 0.1;
         
-        // При сильном магнитном поле электроны стартуют уже отклоненными
+        // В присутствии сильного магнитного поля и тока
+        // новые электроны появляются с учетом накопления заряда
         if (showEdgeAccumulation) {
-          // Случайное значение, но с отрицательным смещением для имитации отрицательного накопления зарядов
+          // Смещаем начальное положение к нижней части полупроводника
+          // это имитирует отрицательное накопление зарядов на одной стороне
           electron.position.z = Math.random() * 0.2 - 0.4;
         } else {
           electron.position.z = Math.random() * 0.4 - 0.2;
@@ -101,35 +270,84 @@ export class ElectronSimulation {
       // Ограничиваем положение электрона внутри полупроводника
       electron.position.y = THREE.MathUtils.clamp(electron.position.y, -0.2, 0.2);
       
-      // Имитация накопления зарядов на краях - электроны должны скапливаться на одном краю при сильном поле
+      // Имитация эффекта Холла - накопление зарядов на краях
       if (showEdgeAccumulation) {
-        // Используем сигмоидную функцию для плавного ограничения положения по Z
-        // За пределы полупроводника электроны выходить не должны, но должны отклоняться
-        const zLimit = 0.4 + (magneticFieldVal/100) * 0.1; // Увеличиваем предел при сильном поле
+        // При сильном магнитном поле увеличиваем предел отклонения
+        const zLimit = 0.4 + (magneticField/100) * 0.1;
         electron.position.z = THREE.MathUtils.clamp(electron.position.z, -zLimit, zLimit);
       } else {
         electron.position.z = THREE.MathUtils.clamp(electron.position.z, -0.4, 0.4);
       }
       
-      // Делаем размер электрона пульсирующим, чтобы добавить жизни
-      const pulse = 1 + Math.sin(time * 0.003 + electron.id * 0.5) * 0.1;
-      electron.mesh.scale.set(pulse, pulse, pulse);
+      // Визуальные эффекты для электронов
+      // Размер пульсирует для более естественного вида
+      const pulse = 1 + Math.sin(time * 3 + electron.id * 0.5) * 0.1;
       
-      // Меняем яркость свечения в зависимости от скорости
-      const electronMaterial = electron.mesh.material as THREE.MeshStandardMaterial;
-      electronMaterial.emissiveIntensity = 0.3 + (Math.abs(electron.velocity.x) / 2) * 0.7;
+      // Обновляем позицию и масштаб в InstancedMesh
+      this.dummy.position.copy(electron.position);
+      this.dummy.scale.set(pulse, pulse, pulse);
+      this.dummy.updateMatrix();
       
-      // Обновляем меш
-      electron.mesh.position.copy(electron.position);
+      if (this.electronsMesh) this.electronsMesh.setMatrixAt(index, this.dummy.matrix);
+      if (this.electronsGlow) this.electronsGlow.setMatrixAt(index, this.dummy.matrix);
     });
+    
+    // Обновляем матрицы экземпляров
+    if (this.electronsMesh) this.electronsMesh.instanceMatrix.needsUpdate = true;
+    if (this.electronsGlow) this.electronsGlow.instanceMatrix.needsUpdate = true;
   }
   
   public dispose(): void {
-    this.electrons.forEach(electron => {
-      this.scene.remove(electron.mesh);
-      electron.mesh.geometry.dispose();
-      (electron.mesh.material as THREE.Material).dispose();
-    });
+    // Удаляем InstancedMesh и освобождаем ресурсы
+    if (this.electronsMesh) {
+      this.scene.remove(this.electronsMesh);
+      this.electronsMesh.geometry.dispose();
+      
+      // Исправляем типизацию для материала
+      if (this.electronsMesh.material instanceof THREE.Material) {
+        this.electronsMesh.material.dispose();
+      } else if (Array.isArray(this.electronsMesh.material)) {
+        this.electronsMesh.material.forEach(material => material.dispose());
+      }
+      
+      this.electronsMesh = null;
+    }
+    
+    if (this.electronsGlow) {
+      this.scene.remove(this.electronsGlow);
+      this.electronsGlow.geometry.dispose();
+      
+      // Исправляем типизацию для материала
+      if (this.electronsGlow.material instanceof THREE.Material) {
+        this.electronsGlow.material.dispose();
+      } else if (Array.isArray(this.electronsGlow.material)) {
+        this.electronsGlow.material.forEach(material => material.dispose());
+      }
+      
+      this.electronsGlow = null;
+    }
+    
+    // Очищаем геометрию и материалы
+    if (this.electronsGeometry) {
+      this.electronsGeometry.dispose();
+      this.electronsGeometry = null;
+    }
+    
+    if (this.electronsMaterial) {
+      this.electronsMaterial.dispose();
+      this.electronsMaterial = null;
+    }
+    
+    if (this.glowGeometry) {
+      this.glowGeometry.dispose();
+      this.glowGeometry = null;
+    }
+    
+    if (this.glowMaterial) {
+      this.glowMaterial.dispose();
+      this.glowMaterial = null;
+    }
+    
     this.electrons = [];
   }
   

@@ -1,44 +1,44 @@
 import * as THREE from 'three';
 
-// Типы для визуализации
-export interface LorentzArrow {
-  arrow: THREE.ArrowHelper;
-  originalDirection: THREE.Vector3;
-  length: number;
-}
-
-// Функция создания магнитных стрелок
-export function createMagneticFieldArrows(): THREE.ArrowHelper[] {
-  const arrowHelpers: THREE.ArrowHelper[] = [];
-  for (let x = -1.5; x <= 1.5; x += 1.5) {
-    for (let z = -0.4; z <= 0.4; z += 0.8) {
+// Функция создания магнитных стрелок - возвращает группу для лучшей организации
+export function createMagneticFieldArrows(): THREE.Group {
+  const arrowsGroup = new THREE.Group();
+  
+  // Создаем больше стрелок для лучшей визуализации поля
+  for (let x = -1.5; x <= 1.5; x += 0.75) {
+    for (let z = -0.4; z <= 0.4; z += 0.4) {
       const arrowHelper = new THREE.ArrowHelper(
         new THREE.Vector3(0, -1, 0),
-        new THREE.Vector3(x, 1.5, z),
-        1,
+        new THREE.Vector3(x, 1.0, z),
+        1.2,
         0x1e40af,
         0.15,
         0.1
       );
-      arrowHelpers.push(arrowHelper);
+      
+      // Добавляем уникальный ID для каждой стрелки для дальнейшей анимации
+      arrowHelper.userData = { id: arrowsGroup.children.length };
+      
+      arrowsGroup.add(arrowHelper);
     }
   }
-  return arrowHelpers;
+  
+  return arrowsGroup;
 }
 
 // Функция создания стрелок Лоренца
-export function createLorentzForceArrows(scene: THREE.Scene): LorentzArrow[] {
-  const lorentzArrows: LorentzArrow[] = [];
+export function createLorentzForceArrows(): THREE.Group {
+  const lorentzArrowsGroup = new THREE.Group();
   
-  // Создаем стрелки для визуализации силы Лоренца
-  // Стрелки должны показывать направление отклонения электронов
+  // Создаем больше стрелок для лучшей визуализации
   const arrowPositions = [
     new THREE.Vector3(-1.5, 0.1, 0),
-    new THREE.Vector3(0, 0.1, 0),
+    new THREE.Vector3(-0.5, 0.1, 0),
+    new THREE.Vector3(0.5, 0.1, 0),
     new THREE.Vector3(1.5, 0.1, 0)
   ];
   
-  arrowPositions.forEach((position) => {
+  arrowPositions.forEach((position, index) => {
     // Начальное направление - горизонтально вдоль оси Z (отклонение)
     const direction = new THREE.Vector3(0, 0, 1).normalize();
     const length = 0.5; // Начальная длина
@@ -56,23 +56,28 @@ export function createLorentzForceArrows(scene: THREE.Scene): LorentzArrow[] {
     // Поворачиваем стрелку, чтобы она указывала в правильном направлении
     arrow.visible = false; // Изначально скрыта, будет показана при наличии магнитного поля
     
-    scene.add(arrow);
-    
-    lorentzArrows.push({
-      arrow,
+    // Добавляем дополнительные данные для анимации
+    arrow.userData = {
       originalDirection: direction.clone(),
-      length
-    });
+      length,
+      id: index
+    };
+    
+    lorentzArrowsGroup.add(arrow);
   });
   
-  return lorentzArrows;
+  return lorentzArrowsGroup;
 }
 
-// Функция создания стрелок тока
-export function createCurrentArrows(scene: THREE.Scene): {
+// Функция создания стрелок тока - обновленная версия с группой
+export function createCurrentArrows(): {
   mainArrow: THREE.ArrowHelper,
-  smallArrows: THREE.Mesh[]
+  smallArrows: THREE.Mesh[],
+  group: THREE.Group
 } {
+  // Создаем группу для всех элементов тока
+  const currentGroup = new THREE.Group();
+  
   // Основная стрелка тока
   const currentArrow = new THREE.ArrowHelper(
     new THREE.Vector3(1, 0, 0),
@@ -82,12 +87,15 @@ export function createCurrentArrows(scene: THREE.Scene): {
     0.3,
     0.15
   );
-  scene.add(currentArrow);
+  
+  // Начальные настройки видимости и цвета
+  currentArrow.visible = false; // Скрываем по умолчанию, будет показана при наличии тока
+  currentGroup.add(currentArrow);
 
   // Создаем дополнительные стрелки тока для лучшей визуализации
-  const arrowCount = 6; // Количество дополнительных стрелок
-  const arrowSpacing = 1.0; // Расстояние между стрелками
-  const arrowMeshes: THREE.Mesh[] = [];
+  const arrowCount = 8; // Увеличиваем количество дополнительных стрелок
+  const arrowSpacing = 0.8; // Расстояние между стрелками
+  const smallArrows: THREE.Mesh[] = [];
   
   for (let i = 0; i < arrowCount; i++) {
     // Создаем небольшие стрелки вдоль полупроводника для показа направления тока
@@ -104,19 +112,20 @@ export function createCurrentArrows(scene: THREE.Scene): {
     arrowMesh.position.set(-2 + i * arrowSpacing, 0, 0); // Распределяем вдоль оси X
     
     // Добавляем небольшое смещение по Y и Z
-    arrowMesh.position.y += 0.05;
-    arrowMesh.position.z += 0.6;
+    arrowMesh.position.y = 0.05 + Math.sin(i * 0.7) * 0.03;
+    arrowMesh.position.z = 0.6 + Math.cos(i * 0.9) * 0.05;
     
     arrowMesh.castShadow = true;
     arrowMesh.visible = false; // Изначально скрываем, будем показывать в зависимости от тока
     
-    scene.add(arrowMesh);
-    arrowMeshes.push(arrowMesh);
+    currentGroup.add(arrowMesh);
+    smallArrows.push(arrowMesh);
   }
   
   return {
     mainArrow: currentArrow,
-    smallArrows: arrowMeshes
+    smallArrows: smallArrows,
+    group: currentGroup
   };
 }
 
@@ -205,88 +214,90 @@ export function setupLighting(scene: THREE.Scene): void {
   scene.add(bottomLight);
 }
 
-// Обновление визуализации силы Лоренца
+// Обновление стрелок магнитного поля с использованием группы
+export function updateMagneticFieldArrows(
+  arrowsGroup: THREE.Group,
+  magneticField: number,
+  time: number
+): void {
+  // Делаем группу видимой только при наличии магнитного поля
+  arrowsGroup.visible = magneticField > 0.1;
+  
+  if (magneticField <= 0.1) return;
+  
+  // Проходим по всем дочерним объектам группы
+  arrowsGroup.children.forEach((child, index) => {
+    const arrow = child as THREE.ArrowHelper;
+    
+    // Базовое масштабирование в зависимости от величины поля
+    const baseScale = Math.min(2.0, Math.max(0.5, magneticField / 30));
+    
+    // Добавляем плавную пульсацию для живости
+    const pulse = 1 + Math.sin(time * 2 + index * 0.5) * 0.1;
+    
+    // Масштабируем длину стрелки
+    arrow.setLength(
+      baseScale * pulse,
+      baseScale * 0.15,  // головка стрелки
+      baseScale * 0.1    // конус стрелки
+    );
+    
+    // Меняем цвет в зависимости от силы поля
+    const hue = 0.6 - (magneticField / 150) * 0.1; // от голубого к синему
+    const saturation = 0.7 + (magneticField / 100) * 0.3;
+    const lightness = 0.5;
+    
+    const arrowColor = new THREE.Color().setHSL(hue, saturation, lightness);
+    
+    // Применяем новый цвет
+    if (arrow.line) {
+      (arrow.line.material as THREE.LineBasicMaterial).color = arrowColor;
+    }
+    if (arrow.cone) {
+      (arrow.cone.material as THREE.MeshBasicMaterial).color = arrowColor;
+    }
+  });
+}
+
+// Обновление стрелок силы Лоренца с использованием группы
 export function updateLorentzForceArrows(
-  lorentzArrows: LorentzArrow[],
+  lorentzArrowsGroup: THREE.Group,
   magneticField: number,
   current: number,
   time: number
 ): void {
   // Показываем стрелки только если есть магнитное поле и ток
-  const shouldShowArrows = magneticField > 0.01 && current > 0.01;
+  const shouldShowArrows = magneticField > 1.0 && current > 0.5;
   
-  lorentzArrows.forEach((lorentzArrow, index) => {
-    lorentzArrow.arrow.visible = shouldShowArrows;
+  lorentzArrowsGroup.visible = shouldShowArrows;
+  
+  if (!shouldShowArrows) return;
+  
+  lorentzArrowsGroup.children.forEach((child, index) => {
+    const arrow = child as THREE.ArrowHelper;
     
-    if (shouldShowArrows) {
-      // Направление силы Лоренца для электронов - вверх по оси Z
-      // При отрицательном заряде и отрицательной скорости (электроны движутся влево)
-      
-      // Расчет силы Лоренца (пропорциональна произведению тока и магнитного поля)
-      const forceStrength = (magneticField / 50) * (current / 5);
-      
-      // Устанавливаем длину стрелки
-      const baseLength = lorentzArrow.length * forceStrength * 2;
-      
-      // Добавляем анимацию пульсации
-      const pulseIntensity = 0.2;
-      const pulseSpeed = 3; // Скорость пульсации
-      const pulse = 1 + Math.sin(time * pulseSpeed + index) * pulseIntensity;
-      
-      // Применяем длину с учетом пульсации
-      const finalLength = baseLength * pulse;
-      lorentzArrow.arrow.setLength(finalLength, 0.12 * pulse, 0.08 * pulse);
-      
-      // Меняем цвет в зависимости от силы
-      const color = new THREE.Color();
-      color.setHSL(0.33 - forceStrength * 0.1, 0.8, 0.5); // От зеленого к желтому
-      
-      if (lorentzArrow.arrow.line) {
-        (lorentzArrow.arrow.line.material as THREE.LineBasicMaterial).color = color;
-      }
-      if (lorentzArrow.arrow.cone) {
-        (lorentzArrow.arrow.cone.material as THREE.MeshBasicMaterial).color = color;
-      }
+    // Расчет силы Лоренца (пропорциональна произведению тока и магнитного поля)
+    const forceStrength = Math.min(3.0, (magneticField / 40) * (current / 4));
+    
+    // Добавляем анимацию пульсации
+    const pulseIntensity = 0.15;
+    const pulseSpeed = 2; // Скорость пульсации
+    const pulse = 1 + Math.sin(time * pulseSpeed + index) * pulseIntensity;
+    
+    // Применяем длину с учетом пульсации
+    const baseLength = 0.5 * forceStrength;
+    const finalLength = baseLength * pulse;
+    arrow.setLength(finalLength, 0.12 * pulse, 0.08 * pulse);
+    
+    // Меняем цвет в зависимости от силы
+    const color = new THREE.Color();
+    color.setHSL(0.33 - forceStrength * 0.05, 0.8, 0.5); // От зеленого к желтому
+    
+    if (arrow.line) {
+      (arrow.line.material as THREE.LineBasicMaterial).color = color;
     }
-  });
-}
-
-// Обновление стрелок магнитного поля
-export function updateMagneticFieldArrows(
-  arrows: THREE.ArrowHelper[],
-  magneticField: number,
-  time: number
-): void {
-  arrows.forEach((arrow, index) => {
-    // Делаем стрелки видимыми только при наличии магнитного поля
-    arrow.visible = magneticField > 0.01;
-    
-    if (magneticField > 0.01) {
-      // Базовое масштабирование в зависимости от величины поля
-      const baseScale = magneticField / 50;
-      
-      // Добавляем небольшую пульсацию для живости
-      const pulse = 1 + Math.sin(time * 0.002 + index) * 0.1;
-      
-      arrow.scale.setY(baseScale * pulse);
-      
-      // Меняем цвет в зависимости от силы поля
-      const arrowColor = new THREE.Color();
-      
-      // От синего до фиолетового по мере увеличения силы поля
-      const hue = 0.6 - (magneticField / 150) * 0.1; // значение hue: 0.6 (голубой) -> 0.5 (синий)
-      const saturation = 0.7 + (magneticField / 100) * 0.3;
-      const lightness = 0.5;
-      
-      arrowColor.setHSL(hue, saturation, lightness);
-      
-      // Применяем новый цвет
-      if (arrow.line) {
-        (arrow.line.material as THREE.LineBasicMaterial).color = arrowColor;
-      }
-      if (arrow.cone) {
-        (arrow.cone.material as THREE.MeshBasicMaterial).color = arrowColor;
-      }
+    if (arrow.cone) {
+      (arrow.cone.material as THREE.MeshBasicMaterial).color = color;
     }
   });
 }
@@ -359,32 +370,38 @@ export function updateCurrentArrows(
 }
 
 // Функция создания красивого электрона
+// Оставлена для обратной совместимости, предпочтительно использовать InstancedMesh
 export function createBeautifulElectronMesh(position: THREE.Vector3): THREE.Mesh {
-  // Создаем сферу с более качественной геометрией
-  const geometry = new THREE.SphereGeometry(0.05, 12, 12);
+  console.warn('createBeautifulElectronMesh: эта функция устарела, используйте оптимизированную версию с InstancedMesh');
   
-  // Создаем красивый материал для электронов
+  // Создаем сферу с более качественной геометрией
+  const geometry = new THREE.SphereGeometry(0.05, 16, 16);
+  
+  // Создаем красивый материал для электронов с более ярким эффектом
   const material = new THREE.MeshStandardMaterial({
     color: 0x3b82f6,
     emissive: 0x1e40af,
-    emissiveIntensity: 0.5,
-    roughness: 0.3,
-    metalness: 0.5,
+    emissiveIntensity: 0.7,
+    roughness: 0.2,
+    metalness: 0.7,
     transparent: true,
     opacity: 0.9
   });
   
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(position);
-  mesh.castShadow = true; // Электроны тоже будут отбрасывать тени
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   
-  // Добавляем небольшое свечение вокруг электрона
-  const glowGeometry = new THREE.SphereGeometry(0.06, 8, 8);
+  // Добавляем свечение вокруг электрона
+  const glowGeometry = new THREE.SphereGeometry(0.08, 12, 12);
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0x60a5fa,
     transparent: true,
-    opacity: 0.3
+    opacity: 0.15,
+    side: THREE.BackSide
   });
+  
   const glow = new THREE.Mesh(glowGeometry, glowMaterial);
   mesh.add(glow);
   
